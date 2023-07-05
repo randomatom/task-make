@@ -10,17 +10,22 @@ if [ $# -eq 1 ]; then
 		REMOTE=https://github.com/randomatom/task-make/raw/main
 	elif [ "$1" = 'gitee' ] ;then
 		REMOTE=https://gitee.com/randomatom/task-make/raw/main
+	else
+		echo "param [$1] ERROR"
+		exit 1
 	fi
-	echo ${REMOTE}
 
 	if [ -n "${REMOTE}" ]; then
 		wget -P ${DL} ${REMOTE}/task.js
+		echo ${REMOTE}/${QJS_BIN}
 		wget -P ${DL} ${REMOTE}/${QJS_BIN}
 	fi
 else
 	cp task.js ${DL}
 	cp ${QJS_BIN} ${DL}
 fi
+
+exit 1
 
 # docker 里没有sudo
 SUDO=""

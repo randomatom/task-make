@@ -45,7 +45,7 @@ m run
 
 ### 本方案
 
-主要思路，借鉴make的方案 进行优化。采用类似 makefile 格式的脚本，很方便管理各种小任务。<br>
+主要思路，借鉴make的方案 进行优化。采用类似 makefile 格式的脚本，很方便管理各种小任务。
 同时便于利用该生态，用vim、vscode编辑自动语法高亮。  
 相对makefile主要改进点：  
 1. 每个task（或者叫tareget）里的命令，是完整的bash小脚本。而不是makefile 里面反直觉的方法。
@@ -68,16 +68,18 @@ alias m="qjs /usr/local/bin/task.js"
 
 ### 一键安装
 已经 提供在部分硬件平台上在mac和linux编译好的qjs二进制文件, 特殊平台的qjs需要自己编译。
+需要bash支持, 只支持类 *nit系统，**不支持win**。
 
-1. 从 github 安装
+
+1. 从 github 安装. 由于网络问题，不一定能安装成功
 ```
-curl https://raw.githubusercontent.com/randomatom/task-make/main/install.sh | bash -s github
+curl https://github.com/randomatom/task-make/raw/main/install.sh | bash -s github
 ```
-2. 网络有问题的话，从 gitee镜像 安装
+2. 从 gitee镜像 安装. 由于网络问题，不一定能安装成功
 ```
 curl https://gitee.com/randomatom/task-make/raw/main/install.sh | bash -s gitee
 ```
-3. 或者下载到本地之后 `./install.sh`
+3. `git` 下载到本地之后 `./install.sh`。
 
 ## mk文件
 
