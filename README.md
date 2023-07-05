@@ -53,6 +53,14 @@ m run
 1. 允许 task 调用其他 task；
 1. 除了本地的task.mk 文件，同时支持 全局的 task 库，类似c语言的系统的库，可以方便积累、调用。
 
+效果：
+
+
+https://github.com/randomatom/task-make/assets/6417202/0f2b24da-1f8c-41f5-9b85-b94daf69a603
+
+
+
+
 
 ##  安装
 
@@ -80,6 +88,8 @@ curl https://github.com/randomatom/task-make/raw/main/install.sh | bash -s githu
 curl https://gitee.com/randomatom/task-make/raw/main/install.sh | bash -s gitee
 ```
 3. `git` 下载到本地之后 `./install.sh`。
+
+
 
 ## mk文件
 
