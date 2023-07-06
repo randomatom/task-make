@@ -478,7 +478,7 @@ class ArgInfo {
 		let ret = 1
 		let arr = arg.split(':')
 		if (arr.length == 2 && (arr[0] != '' || arr[1] != '')) {
-			let m_file = arr[0].match(/^@\w+$|^(\/|\w|\.|-)+$|^$/)
+			let m_file = arr[0].match(/^@\w+(\/|\w|\.|-)+$|^(\/|\w|\.|-)+$|^$/)
 			let m_task = arr[1].match(/^[A-Za-z]\w*$|^\d+$|^$/)
 			if (m_file && m_task) {
 				this.file = m_file[0]
@@ -487,7 +487,7 @@ class ArgInfo {
 				ret = 0
 			}
 		} else if (arr.length == 1) {
-			let m_file = arr[0].match(/^@(\w|-)*$/)
+			let m_file = arr[0].match(/^@(\/|\w|\.|-)*$/)
 			if (m_file) {
 				this.file = m_file[0]
 				this.task = ''
@@ -539,8 +539,12 @@ class ArgInfo {
 	}
 
 	expand_file(short_name) {
-		if (short_name.length > 1 && short_name[0] == '@') {
-			return `${this.task_main_dir}/repo/${short_name.slice(1)}.mk`
+		if (short_name.startsWith('@')) {
+			if (short_name.endsWith('/')) {
+				return `${this.task_main_dir}/repo/${short_name.slice(1)}`
+			} else {
+				return `${this.task_main_dir}/repo/${short_name.slice(1)}.mk`
+			}
 		} else {
 			return short_name
 		}
@@ -612,17 +616,60 @@ class ArgInfo {
 		}
 	}
 
+	print_repo(sub_dir, is_simple) {
+		if (!sub_dir.match(/^@$|^@.+\/$/)) {
+			loge(`error: ${sub_dir}`)
+			return
+		}
+		let real_dir = `${this.task_main_dir}/repo/${sub_dir.slice(1)}`
+		let repo_list = read_dir_mks(real_dir)
+		if (!repo_list) {
+			loge(`Module Path [${sub_dir}] error!`)
+			return
+		}
+
+		// loge(`sub_dir: ${sub_dir}`)
+		// loge(`real_dir: ${real_dir}`)
+		if (is_simple == 's') {
+			repo_list[0].forEach((x, _) => {
+				log(`${sub_dir}${x}`)
+			})
+			repo_list[1].forEach((x, _) => {
+				log(`${sub_dir}${x}/ `)
+			})
+		} else {
+			// logd('     ------------------')
+			repo_list[0].forEach((x, _) => {
+				log(`      ${sub_dir}${x}`)
+			})
+
+			repo_list[1].forEach((x, _) => {
+				log(`    > ${sub_dir}${x}/ `)
+			})
+		}
+	}
+
+
 	run() {
 		let ret = 0
 		if (this.action == 'create') {
-			if (this.file) {
-				let file = this.expand_file(this.file)
+			if (!this.file || this.file == '@') return 1;
+			let file = this.expand_file(this.file)
+			if (file.endsWith('/')) {
+				if (os.mkdir(file)[1] != 0) {
+					loge(`Create Directory [${file}] Error!`)
+					return 1
+				}
+			} else {
 				if (os.lstat(file)[1] == 0) {
 					loge(`${file} has exist!`)
 					return 1
 				} else {
 					let fd = std.open(file, 'w')
-					if (!fd) return 1
+					if (!fd) {
+						loge(`create [${file}] Error!`)
+						return 1
+					}
 					fd.puts('*make:\n\t[ -f Makefile ] || [ -f makefile ] && make')
 					fd.close()
 					logi(`create ${file}`)
@@ -630,8 +677,6 @@ class ArgInfo {
 					os.symlink(file, link_file)
 					os.exec(['vi', file, '+'])
 				}
-			} else {
-				return 1
 			}
 		} else if (this.action == 'edit') {
 			let file = this.expand_file(this.file)
@@ -644,29 +689,33 @@ class ArgInfo {
 		} else if (this.action == 'list') {
 			if (this.file && this.task) {
 				let file = this.expand_file(this.file)
-				let info = new MkInfo(file)
-				if (info.err == 0) {
-					let block = info.find_task_block([this.task])
-					if (block) {
-						log(block.cmd_block)
-					} else {
-						if (info.err && this.list_action_arg == '') {
-							info.print_err()
+				if (file.endsWith('.mk')) {
+					let info = new MkInfo(file)
+					if (info.err == 0) {
+						let block = info.find_task_block([this.task])
+						if (block) {
+							log(block.cmd_block)
 						} else {
-							loge(`Task [${this.task}] DON'T exist!`)
+							if (info.err && this.list_action_arg == '') {
+								info.print_err()
+							} else {
+								loge(`Task [${this.task}] DON'T exist!`)
+							}
+							return 1
 						}
+					} else {
+						loge('parse file error')
 						return 1
 					}
-				} else {
-					loge('parse file error')
-					return 1
+				} else if (file.endsWith('/')) {
+					this.print_repo(file, this.list_action_arg)
 				}
 			} else if (this.file) {
-				if (this.file == '@') {
+				if (this.file.match(/^@$|^@.+\/$/)) {
 					if (this.list_action_arg == '') {
 						logi('Select a Module:')
 					}
-					print_repo(this.task_main_dir, this.list_action_arg)
+					this.print_repo(this.file, this.list_action_arg)
 				} else {
 					let file = this.expand_file(this.file)
 					let info = new MkInfo(file)
@@ -682,11 +731,11 @@ class ArgInfo {
 			}
 		} else if (this.action == 'default') {
 			// 没有 -l/-c 等参数
-			if (this.file == '@') {
+			if (this.file == '@' || this.file.endsWith('/')) {
 				if (this.list_action_arg == '') {
 					logi('Select a Module:')
 				}
-				print_repo(this.task_main_dir, this.list_action_arg)
+				this.print_repo(this.file, this.list_action_arg)
 			} else if (this.file) {
 				let file = this.expand_file(this.file)
 				let info = new MkInfo(file)
@@ -842,7 +891,7 @@ function read_dir_mks(dir_name) {
 			}
 		})
 	} else {
-		os.mkdir(dir_name)
+		return null
 	}
 	return [mk_list, dir_list]
 }
@@ -877,27 +926,6 @@ function format_string(str, length, mode) {
 	return result
 }
 
-
-function print_repo(task_main_dir, is_simple) {
-	let repo_list = read_dir_mks(task_main_dir + '/repo')
-	if (is_simple == 's') {
-		repo_list[0].forEach((x, _) => {
-			log(`@${x}`)
-		})
-		repo_list[1].forEach((x, _) => {
-			log(`@${x}/`)
-		})
-	} else {
-		// logd('     ------------------')
-		repo_list[0].forEach((x, _) => {
-			log(`      @ ${x}`)
-		})
-
-		repo_list[1].forEach((x, _) => {
-			log(`    > @ ${x}/`)
-		})
-	}
-}
 
 
 function main() {
