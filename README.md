@@ -74,22 +74,15 @@ https://github.com/randomatom/task-make/assets/6417202/0f2b24da-1f8c-41f5-9b85-b
 alias m="qjs /usr/local/bin/task.js"
 ```
 
-### 一键安装
+### 自动安装
 已经 提供在部分硬件平台上在mac和linux编译好的qjs二进制文件, 特殊平台的qjs需要自己编译。
 需要bash支持, 只支持类 *nit系统，**不支持win**。
-
-
-1. 从 github 安装. 由于网络问题，不一定能安装成功
+`git` 下载到本地之后,
 ```
-curl https://github.com/randomatom/task-make/raw/main/install.sh | bash -s github
+./install.sh
 ```
-2. 从 gitee镜像 安装. 由于网络问题，不一定能安装成功
-```
-curl https://gitee.com/randomatom/task-make/raw/main/install.sh | bash -s gitee
-```
-3. `git` 下载到本地之后 `./install.sh`。
 
-
+**注意，安装之后需要source 一下 ~/.bashrc, ~/.zshrc 或者开启新终端才能生效**。
 
 ## mk文件
 

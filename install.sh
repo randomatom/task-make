@@ -25,8 +25,6 @@ else
 	cp ${QJS_BIN} ${DL}
 fi
 
-exit 1
-
 # docker 里没有sudo
 SUDO=""
 if which sudo 2> /dev/null > /dev/null ; then
@@ -44,16 +42,24 @@ ${SUDO} cp ${DL}/task.js /usr/local/bin
 ${SUDO} cp ${DL}/qjs /usr/local/bin
 
 alias_cmd="alias m='qjs /usr/local/bin/task.js'"
+shell_profile=""
 case ${SHELL} in
 	*bash)
-		echo "${alias_cmd}" >> ~/.bashrc
+		shell_profile=~/.bashrc
 		;;
 	*zsh)
-		echo "${alias_cmd}" >> ~/.zshrc
+		shell_profile=~/.zshrc
 		;;
 	*sh)
-		echo "${alias_cmd}" >> ~/.profile
+		shell_profile=~/.profile
 	;;
 	*) echo error;;
 esac
 
+if ! grep "${alias_cmd}" ${shell_profile} > /dev/null ; then
+	echo "${alias_cmd}" >> ${shell_profile}
+fi
+
+echo "Install OK"
+echo 'Please execute the following command or restart a new terminal to enable "m command"'
+echo "    source ${shell_profile} "
