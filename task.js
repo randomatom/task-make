@@ -1,6 +1,6 @@
 /*
 Auth : @RandomAtom
-Data: 2023/06/13
+Date: 2023/06/13
 
 ## 概述
 优化工作流，将日常工作的重复脚本固化。
@@ -785,6 +785,7 @@ class ArgInfo {
 
 		if (os.lstat(tmp_dir)[1] != 0) {
 			os.mkdir(tmp_dir)
+			os.exec(['chmod', '700', tmp_dir])
 		}
 
 		if (Math.random() < 0.001) {
