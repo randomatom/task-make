@@ -559,6 +559,9 @@ class ArgInfo {
 					// 和 make -C 一样
 					this.change_workdir = true
 					break
+				case 'h':
+					this.action = 'help'
+					break
 				default:
 					this.action = ''
 					return 1
@@ -715,7 +718,27 @@ class ArgInfo {
 
 	run() {
 		let ret = 0
-		if (this.action == 'create') {
+		if (this.action == 'help') {
+			logd('Usage:')
+			logd('    m [file:task] [arg]...')
+			logd('    m -C [file:task] [arg]...')
+			logd('    m -c [mk_file]')
+			logd('    m -l [mk_file]')
+			logd('    m -e [mk_file]')
+			logd('    m -s [pattern]...')
+			logd('    m -h')
+			logd('Arguments:')
+			logd('    [[file:]task]    Specifies the task name of the file. If not specified, the default')
+			logd('                     is the task.mk file in the current directory.')
+			logd('Options:')
+			logd('    -C               Change to DIRECTORY before perform tasks.')
+			logd('    -c               Create the mk_file.')
+			logd('    -e               Edit the mk_file.')
+			logd('    -l               List the tasks.')
+			logd('    -s               Search the tasks in global module.')
+			logd('    -h               Help.')
+		}
+		else if (this.action == 'create') {
 			if (!this.file || this.file == '@') return 1;
 			let file = this.expand_file(this.file)
 			if (file.endsWith('/')) {

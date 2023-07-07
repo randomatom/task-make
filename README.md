@@ -238,6 +238,13 @@ $ m -c @new_mod
 $ m -e @new_mod
 ```
 
+6. 检索全局模块的任务
+
+```
+$ m -s push
+@android:push_data
+@android:push_img
+```
 
 ### 调用其他模块的任务
 
