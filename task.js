@@ -136,6 +136,12 @@ let logi = (s) => console.log('\x1b[0;33m' + s + '\x1b[0m')
 let loge = (s) => console.log('\x1b[0;31m' + s + '\x1b[0m')
 let log_obj = (s) => console.log(JSON.stringify(s, null, 4))
 
+function input_str(s) {
+	std.out.printf('\x1b[0;33m' + s + '\x1b[0m')
+	std.out.flush()
+	return std.in.getline().trim()
+}
+
 class MkInfo {
 	constructor(file) {
 		this.file = file
@@ -232,7 +238,7 @@ class MkInfo {
 			// logd('+ ' + line)
 			let tasks = []
 			let task_line_id = 0
-			if (line.indexOf(':') != -1) {
+			if (line.includes(':')) {
 				let m0 = line.match(/^(__init__)\s*:/)
 				let m1 = line.match(/^(\*?)([A-Za-z]\w*)\s*(?:\/\s*([A-Za-z]\w*)\s*)?:/)
 				if (m0) {
@@ -332,7 +338,6 @@ class MkInfo {
 			}
 		}
 	}
-
 
 	cal_task_str_len(arr) {
 		let len = 0
@@ -441,7 +446,8 @@ class ArgInfo {
 		this.file = ''
 		this.task = ''
 		this.scriptArgs = scriptArgs
-		this.list_print_mode = ''
+		this.list_option = ''
+		this.search_option = ''
 		this.search_key_works = []
 		this.shell_args = []
 		this.task_main_dir = task_main_dir
@@ -543,7 +549,7 @@ class ArgInfo {
 					this.action = 'list'
 					if (arg.length > 2 && arg[2] == 's') {
 						// simple mode
-						this.list_print_mode = 's'
+						this.list_option = 's'
 					}
 					break
 				case 'e':
@@ -555,6 +561,8 @@ class ArgInfo {
 				case 's':
 					this.action = 'search'
 					break
+				case 'r':
+					this.action = 'run'
 				case 'C':
 					// 和 make -C 一样
 					this.change_workdir = true
@@ -619,7 +627,7 @@ class ArgInfo {
 				}
 			} else if (this.action == 'edit' || this.action == 'create') {
 				this.file = args[i]
-			} else if (this.action == 'search') {
+			} else if (this.action == 'search' || this.action == 'run') {
 				this.search_key_works = args.slice(i)
 			} else {
 				return 1
@@ -662,8 +670,6 @@ class ArgInfo {
 			return
 		}
 
-		// loge(`sub_dir: ${sub_dir}`)
-		// loge(`real_dir: ${real_dir}`)
 		if (is_simple == 's') {
 			repo_list[0].forEach((x, _) => {
 				log(`${sub_dir}${x}`)
@@ -672,7 +678,6 @@ class ArgInfo {
 				log(`${sub_dir}${x}/ `)
 			})
 		} else {
-			// logd('     ------------------')
 			repo_list[0].forEach((x, _) => {
 				log(`      ${sub_dir}${x}`)
 			})
@@ -716,26 +721,83 @@ class ArgInfo {
 		return task_list
 	}
 
+	filt_task_list(task_list) {
+		function show_task_list(task_list) {
+			logi(`    0. EXIT`)
+			for (let i = 0; i < task_list.length; i++) {
+				std.printf("%5d. %s\n", i + 1, task_list[i])
+			}
+		}
+		let ret = 0
+		while (true) {
+			if (task_list.length <= 1) break
+			show_task_list(task_list)
+			let line = input_str(' Input index or key words: ')
+			if (!line) break
+			if (line.match(/^\d+$/)) {
+				let index = parseInt(line)
+				if (index == 0) {
+					task_list = []
+					break
+				}
+				else if (1 <= index && index <= task_list.length) {
+					task_list = [task_list[index - 1]]
+				} else {
+					loge(`error: index out of range!`)
+				}
+			} else {
+				let arr = []
+				line.split(' ').forEach((x, _) => {
+					if (x) arr.push(x)
+				})
+				let new_task_list = []
+				task_list.forEach((x, _) => {
+					let find = 0
+					for (let i = 0; i < arr.length; i++) {
+						if (x.includes(arr[i])) {
+							find += 1
+						}
+					}
+					if (find == arr.length) new_task_list.push(x)
+				})
+				task_list = new_task_list
+				if (task_list.length == 0) ret = 1
+			}
+		}
+		if (task_list.length == 0) return [null, ret]
+		else if (task_list.length > 1) return [null, ret]
+		else if (task_list.length == 1) {
+			let task_cmd = [task_list[0]]
+			logd(` ===>  ${task_cmd}`)
+			let line = input_str(' Input parameters: ')
+			task_cmd = task_cmd.concat(line.split(' '))
+			return [task_cmd, ret]
+		}
+	}
+
 	run() {
 		let ret = 0
 		if (this.action == 'help') {
 			logd('Usage:')
-			logd('    m [file:task] [arg]...')
-			logd('    m -C [file:task] [arg]...')
-			logd('    m -c [mk_file]')
-			logd('    m -l [mk_file]')
-			logd('    m -e [mk_file]')
+			logd('    m    [[file:]task] [arg]...')
+			logd('    m -C [file:task]   [arg]...')
+			logd('    m -c [file]')
+			logd('    m -l [file]')
+			logd('    m -e [file]')
 			logd('    m -s [pattern]...')
+			logd('    m -r [pattern]...')
 			logd('    m -h')
 			logd('Arguments:')
 			logd('    [[file:]task]    Specifies the task name of the file. If not specified, the default')
 			logd('                     is the task.mk file in the current directory.')
+			logd('    [pattern]        the search pattern.')
 			logd('Options:')
-			logd('    -C               Change to DIRECTORY before perform tasks.')
+			logd('    -C               Change to the directory where the task file is located before executing the task.')
 			logd('    -c               Create the mk_file.')
 			logd('    -e               Edit the mk_file.')
 			logd('    -l               List the tasks.')
 			logd('    -s               Search the tasks in global module.')
+			logd('    -r               Run the tasks in global module.')
 			logd('    -h               Help.')
 		}
 		else if (this.action == 'create') {
@@ -777,6 +839,25 @@ class ArgInfo {
 			task_list.forEach((x, _) => {
 				logd(x)
 			})
+		} else if (this.action == 'run') {
+			let task_list = this.search_task_in_module(this.search_key_works)
+			if (task_list.length > 0) {
+				let result = this.filt_task_list(task_list)
+				let task_with_args = result[0]
+				let err = result[1]
+				if (err != 0) {
+					loge(`error: no task match!`)
+				} else {
+					if (task_with_args) {
+						let a = new ArgInfo([this.scriptArgs[0]].concat(task_with_args), this.task_main_dir)
+						if (a.err == 0) {
+							a.run()
+						}
+					}
+				}
+			} else {
+				loge(`error: no task match!`)
+			}
 		} else if (this.action == 'list') {
 			if (this.file && this.task) {
 				let file = this.expand_file(this.file)
@@ -795,21 +876,21 @@ class ArgInfo {
 						return 1
 					}
 				} else if (file.endsWith('/')) {
-					this.print_repo(file, this.list_print_mode)
+					this.print_repo(file, this.list_option)
 				}
 			} else if (this.file) {
 				if (this.file.match(/^@$|^@.+\/$/)) {
-					if (this.list_print_mode == '') {
+					if (this.list_option == '') {
 						logi('Select a Module:')
 					}
-					this.print_repo(this.file, this.list_print_mode)
+					this.print_repo(this.file, this.list_option)
 				} else {
 					let file = this.expand_file(this.file)
 					let info = new MkInfo(file)
 					if (info.err == 0) {
-						info.print_task(this.list_print_mode)
+						info.print_task(this.list_option)
 					} else {
-						if (this.list_print_mode == '') {
+						if (this.list_option == '') {
 							info.print_err()
 						}
 						return 1
@@ -819,10 +900,10 @@ class ArgInfo {
 		} else if (this.action == 'default') {
 			// 没有 -l/-c 等参数
 			if (this.file == '@' || this.file.endsWith('/')) {
-				if (this.list_print_mode == '') {
+				if (this.list_option == '') {
 					logi('Select a Module:')
 				}
-				this.print_repo(this.file, this.list_print_mode)
+				this.print_repo(this.file, this.list_option)
 			} else if (this.file) {
 				let file = this.expand_file(this.file)
 				let info = new MkInfo(file)
@@ -853,6 +934,9 @@ class ArgInfo {
 						} else {
 							run_info = `Run Task: [ ${rel_path}:${block.tasks[0]} ]`
 						}
+						if (this.shell_args.length > 0) {
+							run_info = run_info.slice(0, -1) + `${this.shell_args} ]`
+						}
 						logi(run_info)
 						if (cur_wd[1] == 0 && new_wd[1] == 0 && cur_wd[0] != new_wd[0]) {
 							// let p1 = this.get_relative_path(cur_wd[0], this.task_root_workdir)
@@ -864,7 +948,7 @@ class ArgInfo {
 						loge(`Task [${this.task}] DON'T exist!`)
 					}
 				} else {
-					info.print_task(this.list_print_mode)
+					info.print_task(this.list_option)
 				}
 			}
 		} else {
@@ -957,7 +1041,6 @@ class ArgInfo {
 		// logd(bash_cmd)
 		return os.exec(bash_cmd)
 	}
-
 }
 
 
@@ -983,38 +1066,6 @@ function read_dir_mks(dir_name) {
 	}
 	return [mk_list, dir_list]
 }
-
-
-function format_string(str, length, mode) {
-	let len1 = str.length
-	let result = ''
-	if (mode == '<') {
-		result = str
-		for (let i = 0; i < length - str.length; i++) {
-			result += ' '
-		}
-	} else if (mode == '>') {
-		for (let i = 0; i < length - str.length; i++) {
-			result += ' '
-		}
-		result += str
-	} else if (mode == '^') {
-		let left_padding = Math.floor((length - str.length) / 2)
-		for (let i = 0; i < left_padding; i++) {
-			result += ' '
-		}
-		result += str
-		let right_padding = length - left_padding - str.length
-		for (let i = 0; i < right_padding; i++) {
-			result += ' '
-		}
-	} else {
-		result = str
-	}
-	return result
-}
-
-
 
 function main() {
 	// example:
