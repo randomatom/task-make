@@ -625,8 +625,10 @@ class ArgInfo {
 				} else {
 					return 1
 				}
-			} else if (this.action == 'edit' || this.action == 'create') {
+			} else if (this.action == 'create') {
 				this.file = args[i]
+			} else if (this.action == 'edit') {
+				this.parse_file_and_task(args[i])
 			} else if (this.action == 'search' || this.action == 'run') {
 				this.search_key_works = args.slice(i)
 			} else {
@@ -770,7 +772,7 @@ class ArgInfo {
 			let task_cmd = [task_list[0]]
 			logd(` ===>  ${task_cmd}`)
 			let line = input_str(' Input parameters: ')
-			task_cmd = task_cmd.concat(line.split(' '))
+			if (line) task_cmd = task_cmd.concat(line.split(' '))
 			return [task_cmd, ret]
 		}
 	}
@@ -829,7 +831,28 @@ class ArgInfo {
 		} else if (this.action == 'edit') {
 			let file = this.expand_file(this.file)
 			if (os.lstat(file)[1] == 0) {
-				os.exec(['vi', file, '+'])
+				if (this.task) {
+					let info = new MkInfo(file)
+					if (info.err == 0) {
+						let block = info.find_task_block([this.task])
+						if (!block) {
+							let fd = std.open(file, 'a')
+							if (fd) {
+								fd.puts(`\n${this.task}:\n`)
+								fd.close()
+							}
+							os.exec(['vi', '+', file])
+						} else {
+							os.exec(['vi', `+${block.lineid}`, file])
+						}
+					} else {
+						loge(info.err_msg)
+						input_str('Press any key to continue...')
+						os.exec(['vi', '+', file])
+					}
+				} else {
+					os.exec(['vi', '+', file])
+				}
 			} else {
 				loge(`[${this.file}] DON'T exist!`)
 				return 1
