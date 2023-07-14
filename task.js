@@ -428,16 +428,14 @@ class ArgInfo {
 		this.search_key_works = []
 		this.shell_args = []
 		this.task_main_dir = task_main_dir
-		this.task_root_workdir = std.getenv('_task_root_workdir')
+		this.task_repo_dir = task_main_dir + '/repo'
+		this.task_root_workdir = std.getenv('_TASK_ROOT_WORKDIR')
 		if (!this.task_root_workdir) {
 			this.task_root_workdir = os.getcwd()[0]
 		}
 		this.change_workdir = false
-		this.cur_task_file = 'task.mk'
-		let cur_file = std.getenv('_TASK_CUR_FILE')
-		if (cur_file) {
-			this.cur_task_file = cur_file
-		}
+		this.default_task_file = std.getenv('_TASK_CUR_DEFAULT_FILE')
+		if (!this.default_task_file) this.default_task_file = 'task.mk'
 		this.err = this.parse_args()
 	}
 
@@ -490,8 +488,7 @@ class ArgInfo {
 			let m_file = arr[0].match(/^@\w+(\/|\w|\.|-)+$|^(\/|\w|\.|-)+$|^$/)
 			let m_task = arr[1].match(/^[A-Za-z]\w*$|^\d+$|^$/)
 			if (m_file && m_task) {
-				this.file = m_file[0]
-				if (this.file == '') this.file = this.cur_task_file
+				if (m_file[0]) this.file = m_file[0]
 				this.task = m_task[0]
 				ret = 0
 			}
@@ -504,7 +501,7 @@ class ArgInfo {
 			} else {
 				let m_task = arr[0].match(/^[A-Za-z]\w*$|^\d+$|^$/)
 				if (m_task) {
-					this.file = this.cur_task_file
+					this.file = this.default_task_file
 					this.task = m_task[0]
 					ret = 0
 				}
@@ -558,9 +555,9 @@ class ArgInfo {
 	expand_file(short_name) {
 		if (short_name.startsWith('@')) {
 			if (short_name.endsWith('/')) {
-				return `${this.task_main_dir}/repo/${short_name.slice(1)}`
+				return `${this.task_repo_dir}/${short_name.slice(1)}`
 			} else {
-				return `${this.task_main_dir}/repo/${short_name.slice(1)}.mk`
+				return `${this.task_repo_dir}/${short_name.slice(1)}.mk`
 			}
 		} else {
 			return short_name
@@ -579,7 +576,7 @@ class ArgInfo {
 		// m   -l      @build
 		// m   -l      @build:make
 		// 0    1        2
-		this.file = this.cur_task_file
+		this.file = this.default_task_file
 		let i = 1
 		let args = this.scriptArgs
 		for (i = 1; i < args.length; i++) {
@@ -624,17 +621,18 @@ class ArgInfo {
 		}
 	}
 
-	get_relative_path(path, base_dir) {
-		// loge(`path: ${path}, base_dir: ${base_dir}`)
-		if (base_dir == '') {
-			return path
-		} else {
-			if (path.indexOf(base_dir) == 0) {
-				return path.slice(base_dir.length + 1)
-			} else {
-				return path
+	get_pretty_relative_path(path, base_dir) {
+		let short_path = path
+		if (path.indexOf(base_dir) == 0) {
+			short_path = path.slice(base_dir.length + 1)
+		}
+		if (short_path.startsWith(this.task_repo_dir)) {
+			short_path = short_path.replace(this.task_repo_dir + '/', '@')
+			if (short_path.endsWith('.mk')) {
+				short_path = short_path.slice(0, -3)
 			}
 		}
+		return short_path
 	}
 
 	print_repo(sub_dir, is_simple) {
@@ -965,7 +963,7 @@ class ArgInfo {
 				let block = info.find_task_block(tasks)
 				if (block) {
 					let run_info = ''
-					let rel_path = this.get_relative_path(this.file, this.task_root_workdir)
+					let rel_path = this.get_pretty_relative_path(this.file, this.task_root_workdir)
 					if (rel_path == 'task.mk') {
 						run_info = `Run Task: [ ${block.tasks[0]} ]`
 					} else {
@@ -977,7 +975,7 @@ class ArgInfo {
 					logi(run_info)
 					if (cur_wd[1] == 0 && new_wd[1] == 0 && cur_wd[0] != new_wd[0]) {
 						// let p1 = this.get_relative_path(cur_wd[0], this.task_root_workdir)
-						let p2 = this.get_relative_path(new_wd[0], this.task_root_workdir)
+						let p2 = this.get_pretty_relative_path(new_wd[0], this.task_root_workdir)
 						logi(`     % Enter Dir: [ ${p2} ]`)
 					}
 					return this.run_task(info.file, block, info.init_block_task, this.shell_args, new_workdir)
@@ -1053,9 +1051,6 @@ class ArgInfo {
 		let set_cmd = 'set -eu\n' + 'set -o pipefail\n'
 		// 子shell中无法看到父shell中的函数，所以在子shell里需要重新定义m()函数
 		let m_func_cmd = `m() {\n\tqjs "${scriptArgs[0]}" "$@"\n}\n`
-		let realpath = os.realpath(this.file)
-		let export_cmd = `export _task_root_workdir="${this.task_root_workdir}"\n` +
-			`export _TASK_CUR_FILE="${realpath[0]}"\n`
 
 		let init_cmd = ''
 		if (this.task_main_dir) {
@@ -1069,7 +1064,7 @@ class ArgInfo {
 			init_cmd += `cd "${new_workdir}"\n`
 		}
 		let commit_line = '\n##########################\n\n'
-		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + export_cmd + init_cmd + commit_line
+		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + commit_line
 			+ init_block_task
 		// 动态计算行号
 		let lines = shell_cmd.split(/\r?\n/)
@@ -1116,6 +1111,9 @@ class ArgInfo {
 			}
 		}
 		let bash_cmd = ['/bin/bash', shell_name].concat(shell_args)
+		let real_path = os.realpath(this.expand_file(this.file))[0]
+		std.setenv('_TASK_CUR_DEFAULT_FILE', real_path)
+		std.setenv('_TASK_ROOT_WORKDIR', this.task_root_workdir)
 		// logd(bash_cmd)
 		return os.exec(bash_cmd)
 	}
