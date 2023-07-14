@@ -339,15 +339,6 @@ class MkInfo {
 		}
 	}
 
-	cal_task_str_len(arr) {
-		let len = 0
-		for (let i = 0; i < arr.length; i++) {
-			len += arr[i].length + 3
-		}
-		if (arr.length >= 1) len -= 3
-		return len
-	}
-
 	print() {
 		log('==> MkInfo')
 		log(`file = ${this.file} `)
@@ -368,6 +359,14 @@ class MkInfo {
 	}
 
 	print_task(is_simple) {
+		function cal_task_str_len(arr) {
+			let len = 0
+			for (let i = 0; i < arr.length; i++) {
+				len += arr[i].length + 3
+			}
+			if (arr.length >= 1) len -= 3
+			return len
+		}
 		if (is_simple == 's') {
 			this.block_list.forEach((x, idx) => {
 				let line = `${x.tasks[0]}`
@@ -377,7 +376,7 @@ class MkInfo {
 			logi('Select a Task:')
 			let task_max_length = 0
 			this.block_list.forEach((x, idx) => {
-				let len = this.cal_task_str_len(x.tasks)
+				let len = cal_task_str_len(x.tasks)
 				if (len > task_max_length) {
 					task_max_length = len
 				}
@@ -415,28 +414,6 @@ class MkInfo {
 			}, this)
 		}
 	}
-}
-
-function crc16(s) {
-	let n = 0
-	let poly = 0xA001
-	let ret = 0xA001
-	for (let i = 0; i < s.length; i++) {
-		let n = s.charCodeAt(i)
-		ret = (ret ^ n) & 0xffff
-		for (let j = 0; j < 8; j++) {
-			if ((ret & 0x0001) > 0) {
-				ret = (ret >> 1)
-				ret = ((ret ^ poly) & 0xFFFF)
-			} else {
-				ret = (ret >> 1)
-			}
-		}
-	}
-	let hi = ((ret >> 8) & 0xFF)
-	let lo = (ret & 0xFF)
-	ret = ((lo << 8) | hi)
-	return ret
 }
 
 
@@ -661,6 +638,28 @@ class ArgInfo {
 	}
 
 	print_repo(sub_dir, is_simple) {
+		function read_dir_mks(dir_name) {
+			let mk_list = []
+			let dir_list = []
+			let dirs_st = os.readdir(dir_name)
+			if (dirs_st[1] == 0) {
+				dirs_st[0].sort()
+				dirs_st[0].forEach((x, _) => {
+					let f_st = os.lstat(dir_name + '/' + x)
+					if (f_st[1] == 0) {
+						if (f_st[0].mode & os.S_IFDIR && !x.startsWith('.')) {
+							dir_list.push(x)
+						} else if (x.endsWith('.mk') && !x.startsWith('.')) {
+							x = x.replace('.mk', '')
+							mk_list.push(x)
+						}
+					}
+				})
+			} else {
+				return null
+			}
+			return [mk_list, dir_list]
+		}
 		if (!sub_dir.match(/^@$|^@.+\/$/)) {
 			loge(`error: ${sub_dir}`)
 			return
@@ -770,217 +769,273 @@ class ArgInfo {
 		else if (task_list.length > 1) return [null, ret]
 		else if (task_list.length == 1) {
 			let task_cmd = [task_list[0]]
-			logd(` ===>  ${task_cmd}`)
+			if (task_cmd[0].includes(',')) {
+				task_cmd[0] = task_cmd[0].split(',')[0]
+			}
+			log(` ===>  ${task_cmd}`)
 			let line = input_str(' Input parameters: ')
 			if (line) task_cmd = task_cmd.concat(line.split(' '))
 			return [task_cmd, ret]
 		}
 	}
 
-	run() {
-		let ret = 0
-		if (this.action == 'help') {
-			logd('Usage:')
-			logd('    m    [[file:]task] [arg]...')
-			logd('    m -C [file:task]   [arg]...')
-			logd('    m -c [file]')
-			logd('    m -l [file]')
-			logd('    m -e [file]')
-			logd('    m -s [pattern]...')
-			logd('    m -r [pattern]...')
-			logd('    m -h')
-			logd('Arguments:')
-			logd('    [[file:]task]    Specifies the task name of the file. If not specified, the default')
-			logd('                     is the task.mk file in the current directory.')
-			logd('    [pattern]        the search pattern.')
-			logd('Options:')
-			logd('    -C               Change to the directory where the task file is located before executing the task.')
-			logd('    -c               Create the mk_file.')
-			logd('    -e               Edit the mk_file.')
-			logd('    -l               List the tasks.')
-			logd('    -s               Search the tasks in global module.')
-			logd('    -r               Run the tasks in global module.')
-			logd('    -h               Help.')
-		}
-		else if (this.action == 'create') {
-			if (!this.file || this.file == '@') return 1;
-			let file = this.expand_file(this.file)
-			if (file.endsWith('/')) {
-				if (os.mkdir(file) != 0) {
-					loge(`Create Directory [${file}] Error!`)
-					return 1
-				}
-			} else {
-				if (os.lstat(file)[1] == 0) {
-					loge(`${file} has exist!`)
-					return 1
-				} else {
-					let fd = std.open(file, 'w')
-					if (!fd) {
-						loge(`create [${file}] Error!`)
-						return 1
-					}
-					fd.puts('*make:\n\t[ -f Makefile ] || [ -f makefile ] && make')
-					fd.close()
-					logi(`create ${file}`)
-					let link_file = this.expand_file(this.file)
-					os.symlink(file, link_file)
-					os.exec(['vi', file, '+'])
-				}
+	do_help() {
+		log('Usage:')
+		log('    m    [[file:]task] [arg]...')
+		log('    m -C [file:task]   [arg]...')
+		log('    m -c [file]')
+		log('    m -l [file]')
+		log('    m -e [file]')
+		log('    m -s [pattern]...')
+		log('    m -r [pattern]...')
+		log('    m -h')
+		log('Arguments:')
+		log('    [[file:]task]    Specifies the task name of the file. If not specified, the default')
+		log('                     is the task.mk file in the current directory.')
+		log('    [pattern]        the search pattern.')
+		log('Options:')
+		log('    -C               Change to the directory where the task file is located before executing the task.')
+		log('    -c               Create the mk_file.')
+		log('    -e               Edit the mk_file.')
+		log('    -l               List the tasks.')
+		log('    -s               Search the tasks in global module.')
+		log('    -r               Run the tasks in global module.')
+		log('    -h               Help.')
+		return 0
+	}
+
+	do_create() {
+		if (!this.file || this.file == '@') return 1;
+		let file = this.expand_file(this.file)
+		if (file.endsWith('/')) {
+			if (os.mkdir(file) != 0) {
+				loge(`Create Directory [${file}] Error!`)
+				return 1
 			}
-		} else if (this.action == 'edit') {
-			let file = this.expand_file(this.file)
+		} else {
 			if (os.lstat(file)[1] == 0) {
-				if (this.task) {
-					let info = new MkInfo(file)
-					if (info.err == 0) {
-						let block = info.find_task_block([this.task])
-						if (!block) {
-							let fd = std.open(file, 'a')
-							if (fd) {
-								fd.puts(`\n${this.task}:\n`)
-								fd.close()
-							}
-							os.exec(['vi', '+', file])
-						} else {
-							os.exec(['vi', `+${block.lineid}`, file])
+				loge(`${file} has exist!`)
+				return 1
+			} else {
+				let fd = std.open(file, 'w')
+				if (!fd) {
+					loge(`create [${file}] Error!`)
+					return 1
+				}
+				fd.puts('*make:\n\t[ -f Makefile ] || [ -f makefile ] && make')
+				fd.close()
+				logi(`create ${file}`)
+				let link_file = this.expand_file(this.file)
+				os.symlink(file, link_file)
+				os.exec(['vi', file, '+'])
+			}
+		}
+	}
+
+	do_edit() {
+		let file = this.expand_file(this.file)
+		if (os.lstat(file)[1] == 0) {
+			if (this.task) {
+				let info = new MkInfo(file)
+				if (info.err == 0) {
+					let block = info.find_task_block([this.task])
+					if (!block) {
+						let fd = std.open(file, 'a')
+						if (fd) {
+							fd.puts(`\n${this.task}:\n`)
+							fd.close()
 						}
-					} else {
-						loge(info.err_msg)
-						input_str('Press any key to continue...')
 						os.exec(['vi', '+', file])
+					} else {
+						os.exec(['vi', `+${block.lineid}`, file])
 					}
 				} else {
+					loge(info.err_msg)
+					input_str('Press any key to continue...')
 					os.exec(['vi', '+', file])
 				}
 			} else {
-				loge(`[${this.file}] DON'T exist!`)
-				return 1
+				os.exec(['vi', '+', file])
 			}
-		} else if (this.action == 'search') {
-			let task_list = this.search_task_in_module(this.search_key_works)
-			task_list.forEach((x, _) => {
-				logd(x)
-			})
-		} else if (this.action == 'run') {
-			let task_list = this.search_task_in_module(this.search_key_works)
-			if (task_list.length > 0) {
-				let result = this.filt_task_list(task_list)
-				let task_with_args = result[0]
-				let err = result[1]
-				if (err != 0) {
-					loge(`error: no task match!`)
-				} else {
-					if (task_with_args) {
-						let a = new ArgInfo([this.scriptArgs[0]].concat(task_with_args), this.task_main_dir)
-						if (a.err == 0) {
-							a.run()
-						}
-					}
-				}
-			} else {
+		} else {
+			loge(`[${this.file}] DON'T exist!`)
+			return 1
+		}
+	}
+
+	do_search() {
+		let task_list = this.search_task_in_module(this.search_key_works)
+		task_list.forEach((x, _) => {
+			log(x)
+		})
+		return 0
+	}
+
+	do_run() {
+		let task_list = this.search_task_in_module(this.search_key_works)
+		if (task_list.length > 0) {
+			let result = this.filt_task_list(task_list)
+			let task_with_args = result[0]
+			let err = result[1]
+			if (err != 0) {
 				loge(`error: no task match!`)
+			} else {
+				if (task_with_args) {
+					let a = new ArgInfo([this.scriptArgs[0]].concat(task_with_args), this.task_main_dir)
+					if (a.err == 0) {
+						a.do_main()
+					}
+				}
 			}
-		} else if (this.action == 'list') {
-			if (this.file && this.task) {
-				let file = this.expand_file(this.file)
-				if (file.endsWith('.mk')) {
-					let info = new MkInfo(file)
-					if (info.err == 0) {
-						let block = info.find_task_block([this.task])
-						if (block) {
-							log(block.cmd_block)
-						} else {
-							loge(`Task [${this.task}] DON'T exist!`)
-							return 1
-						}
+		} else {
+			loge(`error: no task match!`)
+		}
+		return 0
+	}
+
+	do_list() {
+		if (this.file && this.task) {
+			let file = this.expand_file(this.file)
+			if (file.endsWith('.mk')) {
+				let info = new MkInfo(file)
+				if (info.err == 0) {
+					let block = info.find_task_block([this.task])
+					if (block) {
+						log(block.cmd_block)
 					} else {
-						info.print_err()
+						loge(`Task [${this.task}] DON'T exist!`)
 						return 1
 					}
-				} else if (file.endsWith('/')) {
-					this.print_repo(file, this.list_option)
-				}
-			} else if (this.file) {
-				if (this.file.match(/^@$|^@.+\/$/)) {
-					if (this.list_option == '') {
-						logi('Select a Module:')
-					}
-					this.print_repo(this.file, this.list_option)
 				} else {
-					let file = this.expand_file(this.file)
-					let info = new MkInfo(file)
-					if (info.err == 0) {
-						info.print_task(this.list_option)
-					} else {
-						if (this.list_option == '') {
-							info.print_err()
-						}
-						return 1
-					}
+					info.print_err()
+					return 1
 				}
+			} else if (file.endsWith('/')) {
+				this.print_repo(file, this.list_option)
 			}
-		} else if (this.action == 'default') {
-			// 没有 -l/-c 等参数
-			if (this.file == '@' || this.file.endsWith('/')) {
+		} else if (this.file) {
+			if (this.file.match(/^@$|^@.+\/$/)) {
 				if (this.list_option == '') {
 					logi('Select a Module:')
 				}
 				this.print_repo(this.file, this.list_option)
-			} else if (this.file) {
+			} else {
 				let file = this.expand_file(this.file)
 				let info = new MkInfo(file)
-				if (info.err > 0) {
-					info.print_err()
+				if (info.err == 0) {
+					info.print_task(this.list_option)
+				} else {
+					if (this.list_option == '') {
+						info.print_err()
+					}
 					return 1
 				}
-				this.update_run_list()
-
-				let new_workdir = ''
-				if (this.change_workdir) new_workdir = this.get_base_dir(this.file)
-				let cur_wd = os.getcwd()
-				let new_wd = os.realpath(new_workdir)
-
-				let tasks = []
-				if (this.task) {
-					tasks = [this.task]
-				} else if (info.default_tasks.length > 0) {
-					tasks = info.default_tasks
-				}
-				if (tasks.length > 0) {
-					let block = info.find_task_block(tasks)
-					if (block) {
-						let run_info = ''
-						let rel_path = this.get_relative_path(this.file, this.task_root_workdir)
-						if (rel_path == 'task.mk') {
-							run_info = `Run Task: [ ${block.tasks[0]} ]`
-						} else {
-							run_info = `Run Task: [ ${rel_path}:${block.tasks[0]} ]`
-						}
-						if (this.shell_args.length > 0) {
-							run_info = run_info.slice(0, -1) + `${this.shell_args} ]`
-						}
-						logi(run_info)
-						if (cur_wd[1] == 0 && new_wd[1] == 0 && cur_wd[0] != new_wd[0]) {
-							// let p1 = this.get_relative_path(cur_wd[0], this.task_root_workdir)
-							let p2 = this.get_relative_path(new_wd[0], this.task_root_workdir)
-							logi(`     % Enter Dir: [ ${p2} ]`)
-						}
-						ret |= this.run_task(info.file, block, info.init_block_task, this.shell_args, new_workdir)
-					} else {
-						loge(`Task [${this.task}] DON'T exist!`)
-					}
-				} else {
-					info.print_task(this.list_option)
-				}
 			}
+		}
+	}
+
+	do_default() {
+		// 没有 -l/-c 等参数
+		if (this.file == '@' || this.file.endsWith('/')) {
+			if (this.list_option == '') {
+				logi('Select a Module:')
+			}
+			this.print_repo(this.file, this.list_option)
+		} else if (this.file) {
+			let file = this.expand_file(this.file)
+			let info = new MkInfo(file)
+			if (info.err > 0) {
+				info.print_err()
+				return 1
+			}
+			this.update_run_list()
+
+			let new_workdir = ''
+			if (this.change_workdir) new_workdir = this.get_base_dir(this.file)
+			let cur_wd = os.getcwd()
+			let new_wd = os.realpath(new_workdir)
+
+			let tasks = []
+			if (this.task) {
+				tasks = [this.task]
+			} else if (info.default_tasks.length > 0) {
+				tasks = info.default_tasks
+			}
+			if (tasks.length > 0) {
+				let block = info.find_task_block(tasks)
+				if (block) {
+					let run_info = ''
+					let rel_path = this.get_relative_path(this.file, this.task_root_workdir)
+					if (rel_path == 'task.mk') {
+						run_info = `Run Task: [ ${block.tasks[0]} ]`
+					} else {
+						run_info = `Run Task: [ ${rel_path}:${block.tasks[0]} ]`
+					}
+					if (this.shell_args.length > 0) {
+						run_info = run_info.slice(0, -1) + `${this.shell_args} ]`
+					}
+					logi(run_info)
+					if (cur_wd[1] == 0 && new_wd[1] == 0 && cur_wd[0] != new_wd[0]) {
+						// let p1 = this.get_relative_path(cur_wd[0], this.task_root_workdir)
+						let p2 = this.get_relative_path(new_wd[0], this.task_root_workdir)
+						logi(`     % Enter Dir: [ ${p2} ]`)
+					}
+					return this.run_task(info.file, block, info.init_block_task, this.shell_args, new_workdir)
+				} else {
+					loge(`Task [${this.task}] DON'T exist!`)
+				}
+			} else {
+				info.print_task(this.list_option)
+			}
+		}
+	}
+
+	do_main() {
+		let ret = 0
+		if (this.action == 'help') {
+			ret = this.do_help()
+		} else if (this.action == 'create') {
+			ret = this.do_create()
+		} else if (this.action == 'edit') {
+			ret = this.do_edit()
+		} else if (this.action == 'search') {
+			ret = this.do_search()
+		} else if (this.action == 'run') {
+			ret = this.do_run()
+		} else if (this.action == 'list') {
+			ret = this.do_list()
+		} else if (this.action == 'default') {
+			ret = this.do_default()
 		} else {
 			loge('Option error')
+			ret = 2
 		}
 		return ret
 	}
 
 	run_task(cur_file, block, init_block_task, shell_args, new_workdir) {
+		function crc16(s) {
+			let n = 0
+			let poly = 0xA001
+			let ret = 0xA001
+			for (let i = 0; i < s.length; i++) {
+				let n = s.charCodeAt(i)
+				ret = (ret ^ n) & 0xffff
+				for (let j = 0; j < 8; j++) {
+					if ((ret & 0x0001) > 0) {
+						ret = (ret >> 1)
+						ret = ((ret ^ poly) & 0xFFFF)
+					} else {
+						ret = (ret >> 1)
+					}
+				}
+			}
+			let hi = ((ret >> 8) & 0xFF)
+			let lo = (ret & 0xFF)
+			ret = ((lo << 8) | hi)
+			return ret
+		}
+
 		// 截获Ctrl+C 按键，可以中断程序
 		let trap_int_func = "trap 'onCtrlC' INT\n" +
 			"onCtrlC() {\n\texit 1\n}\n" +
@@ -1067,29 +1122,6 @@ class ArgInfo {
 }
 
 
-function read_dir_mks(dir_name) {
-	let mk_list = []
-	let dir_list = []
-	let dirs_st = os.readdir(dir_name)
-	if (dirs_st[1] == 0) {
-		dirs_st[0].sort()
-		dirs_st[0].forEach((x, _) => {
-			let f_st = os.lstat(dir_name + '/' + x)
-			if (f_st[1] == 0) {
-				if (f_st[0].mode & os.S_IFDIR && !x.startsWith('.')) {
-					dir_list.push(x)
-				} else if (x.endsWith('.mk') && !x.startsWith('.')) {
-					x = x.replace('.mk', '')
-					mk_list.push(x)
-				}
-			}
-		})
-	} else {
-		return null
-	}
-	return [mk_list, dir_list]
-}
-
 function main() {
 	// example:
 	// m
@@ -1119,7 +1151,7 @@ function main() {
 	// log_obj(argInfo)
 	let ret = argInfo.err
 	if (argInfo.err == 0) {
-		ret = argInfo.run()
+		ret = argInfo.do_main()
 	}
 	return ret
 }
