@@ -16,13 +16,13 @@ if [ $# -eq 1 ]; then
 	fi
 
 	if [ -n "${REMOTE}" ]; then
-		wget -P ${DL} ${REMOTE}/task.js
-		echo ${REMOTE}/${QJS_BIN}
-		wget -P ${DL} ${REMOTE}/${QJS_BIN}
+		wget -P "${DL}" "${REMOTE}/task.js"
+		echo "${REMOTE}/${QJS_BIN}"
+		wget -P ${DL} "${REMOTE}/${QJS_BIN}"
 	fi
 else
-	cp task.js ${DL}
-	cp ${QJS_BIN} ${DL}
+	cp task.js "${DL}"
+	cp "${QJS_BIN}" "${DL}"
 fi
 
 # docker 里没有sudo

@@ -262,19 +262,19 @@ run_sub_mod:
 	## 调用子目录的模块
 	echo "Root Working Directory: $(pwd)"
 	m sub_mod/task.mk:run
-	m -C sub_mod/task.mk:run
+	m -w sub_mod/task.mk:run
 	echo  "=======find hello.txt========="
 	find . -name "hello.txt"
 ```
 
 用以下语法调用其他路径的模块的任务
-有个参数 `-C`, 是否切换工作路径(change)。 含义同 make -C 的参数.
+有个参数 `-w`, 是否切换工作路径(working directory)。 含义同 make -C 的参数.
 ```
 m sub_mod/task.mk:run     # 工作路径不变
-m -C sub_mod/task.mk:run  # 切换工作路径到新模块所在路径
+m -w sub_mod/task.mk:run  # 切换工作路径到新模块所在路径
 ```
 
-是否有带-C 的参数，执行结果如下:
+是否有带-w 的参数，执行结果如下:
 
 ```
 Run Task: [ run_sub_mod ]
