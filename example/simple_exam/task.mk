@@ -17,7 +17,7 @@ run_sub_mod:
 	## 调用子目录的模块
 	echo "Root Working Directory: $(pwd)"
 	m sub_mod/task.mk:1
-	m -C sub_mod/task.mk:1
+	m -w sub_mod/task.mk:1
 	echo  "=======find hello.txt========="
 	find . -name "hello.txt"
 	

@@ -129,7 +129,6 @@ $ m -e @new_mod
 import * as os from 'os'
 import * as std from 'std'
 
-
 let log = (s) => console.log(s)
 let logd = (s) => console.log(s)
 let logi = (s) => console.log('\x1b[0;33m' + s + '\x1b[0m')
@@ -421,6 +420,7 @@ class ArgInfo {
 	constructor(scriptArgs, task_main_dir) {
 		this.action = 'default'
 		this.file = ''
+		this.compile_bash_file = ''
 		this.task = ''
 		this.scriptArgs = scriptArgs
 		this.list_option = ''
@@ -537,9 +537,12 @@ class ArgInfo {
 					break
 				case 'r':
 					this.action = 'run'
-				case 'C':
+				case 'w':
 					// 和 make -C 一样
 					this.change_workdir = true
+					break
+				case 'C':
+					this.action = 'compile'
 					break
 				case 'h':
 					this.action = 'help'
@@ -605,6 +608,13 @@ class ArgInfo {
 				this.parse_file_and_task(args[i])
 			} else if (this.action == 'search' || this.action == 'run') {
 				this.search_key_works = args.slice(i)
+			} else if (this.action == 'compile') {
+				this.file = args[i]
+				if (i + 1 < args.length) {
+					this.compile_bash_file = args[i + 1]
+				} else {
+					this.compile_bash_file = this.file.replace(/\.mk$/, '.sh')
+				}
 			} else {
 				return 1
 			}
@@ -777,27 +787,107 @@ class ArgInfo {
 		}
 	}
 
+	do_compile() {
+		let info = new MkInfo(this.file)
+		if (info.err != 0) {
+			loge(`parse file [${this.file}] error!`)
+			return 1
+		}
+		let fd = std.open(this.compile_bash_file, 'w')
+		if (!fd) {
+			loge(`open compile bash file [${this.compile_bash_file}] error!`)
+			return 2
+		}
+		fd.puts('#!/bin/bash\n\n')
+		let task_list = ''
+		function put_task(fd, task_name, cmd_block) {
+			fd.puts(`function do_${task_name} {\n`)
+			let cmd_arr = cmd_block.split('\n')
+			for (let i = 0; i < cmd_arr.length; i++) {
+				let x = cmd_arr[i]
+				if (x.trim()) {
+					x = x.trimEnd()
+					if (x.startsWith('m ')) {
+						if (x.trim()[0] == '-') {
+							loge(`error: "m ${x}" can not use - option!`)
+							return 3
+						}
+						x = `call_m do_${x.slice(2)}`
+					}
+					fd.puts(`    ${x}\n`)
+				}
+			}
+			fd.puts(`}\n\n`)
+			return 0
+		}
+		let init_cmd = ''
+		if (info.init_block_task) {
+			init_cmd += '    #################################\n'
+			init_cmd += '    #           __init__\n'
+			init_cmd += '    #################################\n'
+			let cmd_arr = info.init_block_task.split('\n')
+			cmd_arr.forEach((x, _) => {
+				if (x.trim()) {
+					init_cmd += `    ${x.trimEnd()}\n`
+				}
+			})
+			init_cmd += '    #################################\n'
+		}
+		for (let i = 0; i < info.block_list.length; i++) {
+			let b = info.block_list[i]
+			task_list += `${b.tasks[0]} `
+			if (put_task(fd, b.tasks[0], b.cmd_block) != 0) {
+				return 3
+			}
+		}
+		let func_call_m_str = 'function call_m {\n' +
+			'    cwd=$(pwd)\n' +
+			'    echo -e "\\n\\x1b[0;33mRun Task: [ $@ ] \\x1b[0m"\n' +
+			'    eval $@\n' +
+			'    cd "${cwd}"\n' +
+			'}\n\n'
+		fd.puts(func_call_m_str)
+		fd.puts(`task_list=(${task_list})\n\n`)
+		let main_shell_str = 'echo "Select a Task"\n' +
+			'select task in "${task_list[@]}"; do\n' +
+			'    if [ -z "$task" ]; then\n' +
+			'		echo "Invalid selection"\n' +
+			'		break\n' +
+			'    fi\n' +
+			init_cmd +
+			'    call_m do_$task\n' +
+			'    exit\n' +
+			'done\n'
+		fd.puts(main_shell_str)
+		fd.close()
+		os.exec(['chmod', '+x', this.compile_bash_file])
+		logi(`compile bash file [${this.compile_bash_file}] success!`)
+		return 0
+	}
+
 	do_help() {
 		log('Usage:')
 		log('    m    [[file:]task] [arg]...')
-		log('    m -C [file:task]   [arg]...')
+		log('    m -w [file:task]   [arg]...')
 		log('    m -c [file]')
 		log('    m -l [file]')
 		log('    m -e [file]')
 		log('    m -s [pattern]...')
 		log('    m -r [pattern]...')
+		log('    m -C [mk_file] [sh_file]')
 		log('    m -h')
 		log('Arguments:')
 		log('    [[file:]task]    Specifies the task name of the file. If not specified, the default')
 		log('                     is the task.mk file in the current directory.')
 		log('    [pattern]        the search pattern.')
 		log('Options:')
-		log('    -C               Change to the directory where the task file is located before executing the task.')
+		log('    -w               Change to the work directory where the task file is located before executing the task.')
 		log('    -c               Create the mk_file.')
 		log('    -e               Edit the mk_file.')
 		log('    -l               List the tasks.')
 		log('    -s               Search the tasks in global module.')
 		log('    -r               Run the tasks in global module.')
+		log('    -C               Compile the *.mk file into *.sh.')
 		log('    -h               Help.')
 		return 0
 	}
@@ -1002,6 +1092,10 @@ class ArgInfo {
 			ret = this.do_run()
 		} else if (this.action == 'list') {
 			ret = this.do_list()
+		} else if (this.action == 'compile') {
+			this.file = 'task.mk'
+			this.compile_bash_file = 'task.sh'
+			ret = this.do_compile()
 		} else if (this.action == 'default') {
 			ret = this.do_default()
 		} else {
