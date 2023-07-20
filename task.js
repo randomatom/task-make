@@ -83,7 +83,6 @@ all:
 1.显示当前任务
 $ m -l
 Select a Task:
-	  0. cmake
 	  1. make
 	  2. install
 	  3. claen                       # 任务后面第一行开头有两个##, 该行会被显示
@@ -174,7 +173,7 @@ class MkInfo {
 				}
 			}
 			if (find) {
-				task_list.push(task_name)
+				task_list.push([task_name, block.comment])
 			}
 		}
 		return task_list
@@ -731,10 +730,15 @@ class ArgInfo {
 	}
 
 	filt_task_list(task_list) {
+		// task_list: [[task_name, comment], ...]
 		function show_task_list(task_list) {
 			logi(`    0. EXIT`)
 			for (let i = 0; i < task_list.length; i++) {
-				std.printf("%5d. %s\n", i + 1, task_list[i])
+				if (task_list[i][1]) {
+					std.printf("%5d. %-32s #%s\n", i + 1, task_list[i][0], task_list[i][1])
+				} else {
+					std.printf("%5d. %s\n", i + 1, task_list[i][0])
+				}
 			}
 		}
 		let ret = 0
@@ -763,7 +767,8 @@ class ArgInfo {
 				task_list.forEach((x, _) => {
 					let find = 0
 					for (let i = 0; i < arr.length; i++) {
-						if (x.includes(arr[i])) {
+						let line = x[0] + x[1]
+						if (line.includes(arr[i])) {
 							find += 1
 						}
 					}
@@ -776,11 +781,16 @@ class ArgInfo {
 		if (task_list.length == 0) return [null, ret]
 		else if (task_list.length > 1) return [null, ret]
 		else if (task_list.length == 1) {
-			let task_cmd = [task_list[0]]
+			let task_cmd = [task_list[0][0]]
+			let comment = task_list[0][1]
 			if (task_cmd[0].includes(',')) {
 				task_cmd[0] = task_cmd[0].split(',')[0]
 			}
-			log(` ===>  ${task_cmd}`)
+			if (comment) {
+				std.printf(" ===> %-32s #%s\n", task_cmd[0], comment)
+			} else {
+				std.printf(" ===> %s\n", task_cmd[0])
+			}
 			let line = input_str(' Input parameters: ')
 			if (line) task_cmd = task_cmd.concat(line.split(' '))
 			return [task_cmd, ret]
@@ -967,7 +977,7 @@ class ArgInfo {
 					os.exec(['vi', '+', file])
 				}
 			} else {
-				os.exec(['vi', '+', file])
+				os.exec(['vi', file])
 			}
 		} else {
 			loge(`[${this.file}] DON'T exist!`)
@@ -978,7 +988,11 @@ class ArgInfo {
 	do_search() {
 		let task_list = this.search_task_in_module(this.search_key_works)
 		task_list.forEach((x, _) => {
-			log(x)
+			if (x[1]) {
+				std.printf("%-32s #%s\n", x[0], x[1])
+			} else {
+				std.printf("%s\n", x[0])
+			}
 		})
 		return 0
 	}
@@ -1232,11 +1246,11 @@ class ArgInfo {
 				return 1
 			}
 		}
-		let bash_cmd = ['/bin/bash', shell_name].concat(shell_args)
 		let real_path = os.realpath(this.expand_file(this.file))[0]
 		std.setenv('_TASK_CUR_DEFAULT_FILE', real_path)
 		std.setenv('_TASK_ROOT_WORKDIR', this.task_root_workdir)
 		// logd(bash_cmd)
+		let bash_cmd = ['/bin/bash', shell_name].concat(shell_args)
 		return os.exec(bash_cmd)
 	}
 }
