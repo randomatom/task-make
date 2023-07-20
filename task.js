@@ -1167,8 +1167,12 @@ class ArgInfo {
 		// set -u 当使用未初始化变量，程序退出
 		// set -o pipefail 当在管道中出现错误，程序退出
 		let set_cmd = 'set -eu\n' + 'set -o pipefail\n'
-		// 子shell中无法看到父shell中的函数，所以在子shell里需要重新定义m()函数
-		let m_func_cmd = `m() {\n\tqjs "${scriptArgs[0]}" "$@"\n}\n`
+		let m_func_cmd = ''
+		if (this.scriptArgs[0] != 'm') {
+			// 当用 qjs /usr/local/bin/qjs.js 的方式执行
+			// 子shell中无法看到父shell中的函数，所以在子shell里需要重新定义m()函数
+			m_func_cmd = `m() {\n\tqjs "${scriptArgs[0]}" "$@"\n}\n`
+		}
 
 		let init_cmd = ''
 		if (this.task_main_dir) {
