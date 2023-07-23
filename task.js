@@ -952,6 +952,7 @@ class ArgInfo {
 				os.exec(['vi', file, '+'])
 			}
 		}
+		return 0
 	}
 
 	do_edit() {
@@ -983,6 +984,7 @@ class ArgInfo {
 			loge(`[${this.file}] DON'T exist!`)
 			return 1
 		}
+		return 0
 	}
 
 	do_search() {
@@ -1015,6 +1017,7 @@ class ArgInfo {
 			}
 		} else {
 			loge(`error: no task match!`)
+			return 1
 		}
 		return 0
 	}
@@ -1057,7 +1060,10 @@ class ArgInfo {
 					return 1
 				}
 			}
+		} else {
+			return 1
 		}
+		return 0
 	}
 
 	do_default() {
@@ -1109,11 +1115,13 @@ class ArgInfo {
 					return this.run_task(info.file, block, info.init_block_task, this.shell_args, new_workdir)
 				} else {
 					loge(`Task [${this.task}] DON'T exist!`)
+					return 1
 				}
 			} else {
 				info.print_task(this.list_option)
 			}
 		}
+		return 0
 	}
 
 	do_main() {
