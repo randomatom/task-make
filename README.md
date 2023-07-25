@@ -1,20 +1,37 @@
 # Task-Make
 
+* [Task-Make](#task-make)
+   * [概述](#概述)
+      * [旧方案](#旧方案)
+         * [scripts 目录添加脚本](#scripts-目录添加脚本)
+         * [类似 make 方案](#类似-make-方案)
+      * [本方案](#本方案)
+         * [mk文件](#mk文件)
+         * [仓库目录结构](#仓库目录结构)
+   * [安装](#安装)
+      * [手动安装](#手动安装)
+      * [自动安装](#自动安装)
+   * [使用方式](#使用方式)
+      * [本地task.mk](#本地taskmk)
+      * [全局仓库](#全局仓库)
+      * [调用其他路径模块的任务](#调用其他路径模块的任务)
+      * [将 task.mk 编译成 bash 脚本](#将-taskmk-编译成-bash-脚本)
+
 ## 概述
-日常开发或运维往往有很多繁琐的步骤和流程，需要执行一系列复杂的指令。<br>
+日常开发或运维往往有很多繁琐的步骤和流程，需要执行一系列复杂的指令。  
 对于需要多次重复执行的场合，每次都依赖人工重新输入执行，不仅效率低下, 又容易出错。  
 将日常的命令组合，提取公共部分抽象成 task，进行复用，既减少工作量，也能减少出错概率。  
 如何更好管理这些命令组合（task），有几种方案。
 
 ### 旧方案
 
-#### 1. scripts 目录添加脚本
+#### scripts 目录添加脚本
 
 1. 这对于复杂的脚本比较合适，但对于一些就几行的小任务，用脚本有点划不来；
 2. 对于小任务多的场景，导致脚本会非常多，不方便管理。
 3. 另外，检索和执行也麻烦。
 
-#### 2. 类似 make 方案
+#### 类似 make 方案
 
 借用 make。在bash 定义alias，将需要的工作流放在本地 task.mk 文件里。这样可以将很多小任务放在一起，管理起来也比较方便。
 ```
@@ -48,6 +65,7 @@ m run
 主要思路，借鉴make的方案 进行优化。采用类似 makefile 格式的脚本，很方便管理各种小任务。
 同时便于利用该生态，用vim、vscode编辑自动语法高亮。  
 相对makefile主要改进点：  
+
 1. 每个task（或者叫tareget）里的命令，是完整的bash小脚本。而不是makefile 里面反直觉的方法。
 1. 支持task 的显示、快速调用；
 1. 允许 task 调用其他 task；
@@ -55,36 +73,9 @@ m run
 
 效果：
 
-
 https://github.com/randomatom/task-make/assets/6417202/0f2b24da-1f8c-41f5-9b85-b94daf69a603
 
-
-
-
-
-##  安装
-
-### 手动安装
-1. 依赖 QuickJS  https://bellard.org/quickjs ，下载地址：https://bellard.org/quickjs/binary_releases 。  
-    本来想用python脚本，但考虑到有时候会在一些嵌入式小系统里使用，python过于庞大的。  
-    开始用lua写过一个版本，但考虑lua生态弱，后改为js，用QuickJS 执行。
-2. 将task.js 和 qjs 放到 /usr/local/bin/
-3. 在配置文件(~/.bashrc, ~/.zshrc等等）里加入
-```
-alias m="qjs /usr/local/bin/task.js"
-```
-
-### 自动安装
-已经 提供在部分硬件平台上在mac和linux编译好的qjs二进制文件, 特殊平台的qjs需要自己编译。
-需要bash支持, 只支持类 *nit系统，**不支持win**。
-`git` 下载到本地之后,
-```
-./install.sh
-```
-
-**注意，安装之后需要source 一下 ~/.bashrc, ~/.zshrc 或者开启新终端才能生效**。
-
-## mk文件
+#### mk文件
 
 1. 类似于 makefile文件。以 `:` 结尾的行，为目标行，后面的命令会被执行。
 2. 以 `*` 开头的目标行，为默认目标。当执行 m，不带参数，直接执行该目标。
@@ -131,10 +122,9 @@ all:
 	m install
 ```
 
+#### 仓库目录结构
 
-## 目录结构
-
-可通过 _TASK_PROFILE_DIR 环境变量设置指定，没有设置则默认路径 `~/.local/task`.
+可通过 _TASK_PROFILE_DIR 环境变量设置指定位置。没有设置则默认路径 `~/.local/task`.
 ```
 ├── README.md
 ├── init_rc.sh
@@ -142,12 +132,37 @@ all:
 └── repo
     ├── build.mk
     ├── linux.mk
-    └──test.mk
+    └── test.mk
 ```
 
 1. init_rc.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
 2. run_file_list.txt: 本机运行过的所有 *.mk 文件的列表，方便回顾
 3. repo: 全局模块的存放目录
+
+
+##  安装
+
+### 手动安装
+1. 依赖 QuickJS  https://bellard.org/quickjs ，下载地址：https://bellard.org/quickjs/binary_releases 。  
+    本来想用python脚本，但考虑到有时候会在一些嵌入式小系统里使用，python过于庞大的。  
+    开始用lua写过一个版本，但考虑lua生态弱，后改为js，用QuickJS 执行。
+2. 将task.js 和 qjs 放到 /usr/local/bin/
+3. 在配置文件(~/.bashrc, ~/.zshrc等等）里加入
+```
+alias m="qjs /usr/local/bin/task.js"
+```
+
+### 自动安装
+已经 提供在部分硬件平台上在mac和linux编译好的qjs二进制文件, 特殊平台的qjs需要自己编译。
+需要bash支持, 只支持类 *nit系统，**不支持win**。
+`git` 下载到本地之后,
+
+```
+./install.sh
+```
+
+**注意，安装之后需要source 一下 ~/.bashrc, ~/.zshrc 或者开启新终端才能生效**。
+
 
 ## 使用方式
 
@@ -217,6 +232,10 @@ Select a Task:
       1. wifi_on
       2. wifi_off
       3. sensor
+      4. ping
+$ m -l @linux:ping
+ping www.baidu.com
+
 ```
 
 3. 执行某个模块目标
@@ -236,9 +255,13 @@ $ m -c @new_mod
 
 ```
 $ m -e @new_mod
+$ m -e @linux
+$ m -e @linux:ping   # vim打开之后会直接定位到 ping 这个task所在位置
 ```
 
-6. 检索全局模块的任务
+调用vim 编辑该模块的文件.
+
+6. 检索全局模块的任务 (-s)
 
 ```
 $ m -s push
@@ -246,7 +269,25 @@ $ m -s push
 @android:push_img
 ```
 
-### 调用其他模块的任务
+7. 渐进性检索并执行全局模块的任务 (-r)
+
+可以模糊检索全局模块的任务，并通过逐步输入新的关键字，缩小范围。
+
+```
+$ m -r push
+    0. EXIT
+    1. @git:push_force                  # 强制push
+    2. @oh:push_libcpp_shared_so
+    3. @oh:push_bin_and_run
+ Input index or key words: 1
+ ===> @git:push_force                  # 强制push
+ Input parameters:
+Run Task: [ @git:push_force ]
+
+```
+
+
+### 调用其他路径模块的任务
 
 当前目录 example/simple\_exam 有个例子
 
@@ -290,9 +331,28 @@ Working Directory: task-make/example/simple_exam/sub_mod. Create hello.txt
 ```
 
 
+### 将 task.mk 编译成 bash 脚本
 
+通过 -C  参数，将 task.mk 脚本编译的 bash 脚本。
+当对方没有安装Task-make工具的时候，也可以执行当前各种task.
 
+```
+$ m -C
+compile bash file [task.sh] success!
+```
 
+执行的效果如下：
+
+```
+$ ./task.sh
+Select a Task:
+1) build	  5) make	   9) clean_all	   13) pack
+2) build_host	  6) make_dbg	  10) run
+3) build_ndk	  7) clean	  11) run_gprof
+4) build_oh	  8) clean_cache  12) all
+Enter a number? 12
+Run Task: [ all ]
+```
 
 
 
