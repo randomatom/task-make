@@ -232,7 +232,10 @@ class MkInfo {
 		let after_task_first_line = false
 		while ((line = fd.getline()) != undefined) {
 			line_id++
-			if (line.trim() == '') continue
+			if (line.trim() == '') {
+				if (block.tasks.length == 0) continue
+				else line = '\t'
+			}
 			// logd('+ ' + line)
 			let tasks = []
 			let task_line_id = 0
