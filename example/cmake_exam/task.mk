@@ -9,73 +9,74 @@ __init__:
 
 build / b:
 	echo "===> ${BUILD_DIR}"
-	m build_${PLATFROM}
-
-build_host / bh:
-	## 编译平台: host
 	cd ${BUILD_DIR}
-	cmake \
-		-D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
-		${ROOT_DIR}
-
-build_ndk / bn:
-	## 编译平台: NDK
-	cd ${BUILD_DIR}
-	NDK_ROOT=/Users/wzw/Library/Android/sdk
-	cmake \
-		-D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
-		-D CMAKE_TOOLCHAIN_FILE=${NDK_ROOT}/ndk-bundle/build/cmake/android.toolchain.cmake \
-		-D ANDROID_NDK=${NDK_ROOT}/ndk-bundle \
-		-D ANDROID_TOOLCHAIN=clang  \
-		-D ANDROID_ABI=armeabi-v7a \
-		-D ANDROID_PLATFORM=android-22 \
-		-D OpenCV_DIR=/Users/wzw/work/prj/cv/3rdparty/OpenCV-android-sdk/sdk/native/jni \
-		${ROOT_DIR}
-
-build_oh / bo:
-	## 编译平台: OH
-	cd ${BUILD_DIR}
-	OH_CMAKE=/Users/wzw/Library/Huawei/Sdk/openharmony/9/native/build/cmake/ohos.toolchain.cmake
-	cmake \
-		-D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
-		-D CMAKE_TOOLCHAIN_FILE=${OH_CMAKE} \
-		-D OHOS_ARCH="armeabi-v7a" \
-		${ROOT_DIR}
+	if [ ${PLATFROM} == "host" ]; then
+		cmake \
+			-D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
+			${ROOT_DIR}
+	elif [ ${PLATFROM} == "ndk" ]; then
+		NDK_ROOT=/Users/wzw/Library/Android/sdk
+		cmake \
+			-D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
+			-D CMAKE_TOOLCHAIN_FILE=${NDK_ROOT}/ndk-bundle/build/cmake/android.toolchain.cmake \
+			-D ANDROID_NDK=${NDK_ROOT}/ndk-bundle \
+			-D ANDROID_TOOLCHAIN=clang  \
+			-D ANDROID_ABI=armeabi-v7a \
+			-D ANDROID_PLATFORM=android-22 \
+			-D OpenCV_DIR=/Users/wzw/work/prj/cv/3rdparty/OpenCV-android-sdk/sdk/native/jni \
+			${ROOT_DIR}
+	elif [ ${PLATFROM} == "oh" ]; then
+		OH_CMAKE=/Users/wzw/Library/Huawei/Sdk/openharmony/9/native/build/cmake/ohos.toolchain.cmake
+		cmake \
+			-D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
+			-D CMAKE_TOOLCHAIN_FILE=${OH_CMAKE} \
+			-D OHOS_ARCH="armeabi-v7a" \
+			${ROOT_DIR}
+	else
+		echo 'error' && exit 1
+	fi
 
 make / m:
+	## make [ d ]
 	cd ${BUILD_DIR}
-	make -j8
-
-make_dbg / md:
-	cd ${BUILD_DIR}
-	make VERBOSE=1
+	if [ $# == 0 ]; then
+		make -j8
+	elif [ $1 == 'd' ]; then
+		# dbg 模式, 显示更多细节
+		make VERBOSE=1
+	else
+		echo 'error' &&  exit 1
+	fi
 
 clean / c:
-	cd ${BUILD_DIR}
-	make clean
-
-clean_cache / cc:
-	# 强制删除缓存，避免option使用缓存,改后不生效
-	[ -d ${BUILD_DIR} ] && rm -f ${BUILD_DIR}/CMakeCache.txt
-
-clean_all / ca:
-	rm -rf ${BUILD_DIR}
-	mkdir -p ${BUILD_DIR}
+	## clean [ c | a ]
+	if [ $# == 0 ]; then
+		cd ${BUILD_DIR} && make clean
+	elif [ $1 == 'c' ] ; then
+		# 强制删除缓存，避免option使用缓存,改后不生效
+		echo 'clean cache'
+		[ -d ${BUILD_DIR} ] && rm -f ${BUILD_DIR}/CMakeCache.txt
+	elif [ $1 == 'a' ] ; then
+		# 删除全部目录
+		echo 'clean all'
+		rm -rf ${BUILD_DIR}
+	else
+		echo 'error' && exit 1
+	fi
 
 run / r:
+	## run [ g ]
 	cd ${BUILD_DIR}
 	for r in app*; do
 		./${r}
+		if [ $# == 1 ] && [ $1 == 'g' ] ; then
+			gprof ./${r} gmon.out
+		fi
 	done
-
-run_gprof / rg:
-	cd ${BUILD_DIR}
-	./demo
-	gprof ./demo gmon.out
 
 all / a:
 	m build
-	m make_dbg
+	m make
 
 pack:
 	tar zcvf demo_src-$(date +%Y%m%d%H%M).tgz src apps extern scripts include docs CMakeLists.txt task.mk
