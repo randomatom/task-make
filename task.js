@@ -982,7 +982,7 @@ class ArgInfo {
 				os.exec(['vi', file])
 			}
 		} else {
-			loge(`[${this.file}] DON'T exist!`)
+			loge(`${this.file} DON'T exist!`)
 			return 1
 		}
 		return 0
@@ -1176,25 +1176,68 @@ class ArgInfo {
 		}
 
 		// 截获Ctrl+C 按键，可以中断程序
-		let trap_int_func = "trap 'onCtrlC' INT\n" +
-			"onCtrlC() {\n\texit 1\n}\n" +
-			"trap 'OnError ${LINENO} ' ERR\n"
+		let trap_int_func = "trap 'onCtrlC ${LINENO}' INT\n" +
+			'onCtrlC() {\n' +
+			'\t_SIGINT_FLAG=1\n' +
+			`\t((lineid=\${1}+@2))\n` +
+			'\t[ ${1} -lt @1 ] && exit 1\n' +
+			`\techo -e \"\\033[31m  SIGINT on [ ${cur_file} +\${lineid} ].\\033[0m\"\n` +
+			'\texit 1\n' + 
+			'}\n'
 		// 截获错误，显示行号
-		let trap_err_func = 'OnError() {\n\terrcode="${3:-1}"\n' +
-			`\t((lineid=\${1}+LINE_OFFSET))\n` +
-			`\techo -e \"\\033[31mError on [ ${cur_file} +\${lineid} ]. Exit [\${errcode}]. \\033[0m\"\n ` +
-			'\texit "${errcode}"\n}\n'
-		let trap_cmd = trap_int_func + trap_err_func
+		let trap_err_func = "trap 'OnError ${LINENO}' ERR\n" +
+			'OnError() {\n' +
+			'\terrcode=$?\n' +
+			'\t_ERROR_FLAG=1\n' +
+			`\t((lineid=\${1}+@2))\n` +
+			// '\techo OnError @ $@, err = $errcode\n' +
+			'\t[ ${1} -lt @1 ] && exit 1\n' +
+			'\tif [ $errcode -eq 127 ]; then\n' +
+			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. \\033[0m\"\n` +
+			'\t    exit 1\n' +
+			'\telse\n' +
+			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. code \${errcode}. \\033[0m\"\n` +
+			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try\\033[0m\"\n` + 
+			`\t    echo -e '\\033[33m  "set +euo pipefail"  or  "cmd1 | cmd2 || true". \\033[0m'\n` +
+			'\t    exit "${errcode}"\n' +
+			'\tfi\n' +
+			'}\n'
+		let trap_exit_func = "trap 'OnExit ${LINENO}' EXIT\n" +
+			'OnExit() {\n' +
+			'\terrcode=$?\n' +
+			// '\techo OnExit @ $@, errcode = $errcode\n' +
+			`\t((lineid=\${1}+@2))\n` +
+			'\t[ ${errcode} -eq 0 ] && exit 0\n' +
+			'\t[ -z ${_ERROR_FLAG+x} ] || exit ${errcode}\n' +
+			'\t[ -z ${_SIGINT_FLAG+x} ] || exit ${errcode}\n' +
+			'\t[ ${1} -lt @1 ] && exit ${errcode}\n' +
+			'\t[ ${1} -ge @3 ] && exit 0\n' +
+			`\techo -e \"\\033[31m  Exit \${errcode} on [ ${cur_file} +\${lineid} ]. \\033[0m\"\n` +
+			'\texit "${errcode}"\n' +
+			'}\n'
+		let trap_cmd = trap_int_func + trap_err_func + trap_exit_func
 
 		// set -e 当出错的时候，程序退出
 		// set -u 当使用未初始化变量，程序退出
 		// set -o pipefail 当在管道中出现错误，程序退出
 		let set_cmd = 'set -eu\n' + 'set -o pipefail\n'
+		// 定义 m() 函数，覆盖原来的定义
 		let m_func_cmd = ''
-		if (this.scriptArgs[0] != 'm') {
+		if (this.scriptArgs[0] == 'm') {
+			let sys_path = std.getenv('PATH').split(':')
+			for (let i = 0; i < sys_path.length; i++) {
+				let m_path = sys_path[i] + '/m'
+				if (os.lstat(m_path)[1] == 0) {
+					m_func_cmd = `m() {\n\t"${m_path}" "$@"\n}\n`
+					break
+				}
+			}
+		} else if (this.scriptArgs[0].endsWith('.js')) {
 			// 当用 qjs /usr/local/bin/qjs.js 的方式执行
 			// 子shell中无法看到父shell中的函数，所以在子shell里需要重新定义m()函数
 			m_func_cmd = `m() {\n\tqjs "${scriptArgs[0]}" "$@"\n}\n`
+		} else {
+			m_func_cmd = `m() {\n\t"${scriptArgs[0]}" "$@"\n}\n`
 		}
 
 		let init_cmd = ''
@@ -1208,13 +1251,16 @@ class ArgInfo {
 			// 注意加双引号，防止路径中有空格
 			init_cmd += `cd "${new_workdir}"\n`
 		}
-		let commit_line = '\n##########################\n\n'
-		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + commit_line
-			+ init_block_task
+		let comment_line = '\n##########################\n\n'
 		// 动态计算行号
-		let lines = shell_cmd.split(/\r?\n/)
-		let offset = block.lineid - lines.length + 1
-		shell_cmd = shell_cmd.replace('LINE_OFFSET', offset.toString()) + block.cmd_block
+		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + comment_line
+		let pre_lines_num = (shell_cmd + init_block_task).split(/\r?\n/).length
+		let all_lines_num = pre_lines_num + block.tasks.length + 1
+		let offset_num = block.lineid - pre_lines_num + 1
+		shell_cmd = shell_cmd.replaceAll('@1', pre_lines_num.toString())
+		shell_cmd = shell_cmd.replaceAll('@2', offset_num.toString())
+		shell_cmd = shell_cmd.replaceAll('@3', all_lines_num.toString())
+		shell_cmd += init_block_task + block.cmd_block
 
 		let tag = crc16(shell_cmd)
 		let tmp_dir = `/tmp/mk_task_dir@${std.getenv('USER')}`
@@ -1275,7 +1321,6 @@ function main() {
 	// m      -c        @build
 	// m      -l        @build:task
 	// 0       1           2          3            4
-
 	let task_main_dir = std.getenv('_TASK_PROFILE_DIR')
 	if (!task_main_dir) {
 		task_main_dir = std.getenv('HOME') + '/.local/task'
