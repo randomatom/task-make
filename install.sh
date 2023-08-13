@@ -1,4 +1,4 @@
-# 第一行不要指定 shell, 默认使用当前shell. 方便 ${SHELL} 判断
+#!/bin/bash
 
 QJS_BIN=qjs_bin/$(uname)-$(uname -m)/qjs
 DL=/tmp/task-make-download
@@ -38,28 +38,12 @@ fi
 
 
 [ -d /usr/local/bin ] || ${SUDO} mkdir -p /usr/local/bin
+echo -e "#!/bin/bash\nqjs /usr/local/bin/task.js \$@" > ${DL}/m
 ${SUDO} cp ${DL}/task.js /usr/local/bin
 ${SUDO} cp ${DL}/qjs /usr/local/bin
-
-alias_cmd="alias m='qjs /usr/local/bin/task.js'"
-shell_profile=""
-case ${SHELL} in
-	*bash)
-		shell_profile=~/.bashrc
-		;;
-	*zsh)
-		shell_profile=~/.zshrc
-		;;
-	*sh)
-		shell_profile=~/.profile
-	;;
-	*) echo error;;
-esac
-
-if ! grep "${alias_cmd}" ${shell_profile} > /dev/null ; then
-	echo "${alias_cmd}" >> ${shell_profile}
-fi
+${SUDO} cp ${DL}/m /usr/local/bin/m
+${SUDO} chmod ugo+rx /usr/local/bin/m
 
 echo "Install OK"
-echo 'Please execute the following command or restart a new terminal to enable "m command"'
-echo "    source ${shell_profile} "
+echo "Make sure that /usr/local/bin is in your \$PATH"
+

@@ -147,9 +147,10 @@ all:
     本来想用python脚本，但考虑到有时候会在一些嵌入式小系统里使用，python过于庞大的。  
     开始用lua写过一个版本，但考虑lua生态弱，后改为js，用QuickJS 执行。
 2. 将task.js 和 qjs 放到 /usr/local/bin/
-3. 在配置文件(~/.bashrc, ~/.zshrc等等）里加入
+3. 在 /usr/local/bin里 增加 m 脚本, 内容为
 ```
-alias m="qjs /usr/local/bin/task.js"
+#!/bin/bash
+qjs /usr/local/bin/task.js $@ 
 ```
 
 ### 自动安装
@@ -160,9 +161,6 @@ alias m="qjs /usr/local/bin/task.js"
 ```
 ./install.sh
 ```
-
-**注意，安装之后需要source 一下 ~/.bashrc, ~/.zshrc 或者开启新终端才能生效**。
-
 
 ## 使用方式
 
