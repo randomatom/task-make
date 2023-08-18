@@ -256,7 +256,7 @@ class MkInfo {
 			if (tasks.length > 0) {
 				if (block.tasks[0] == init_task_name && block.cmd_block) {
 					if (this.init_block_task != '') {
-						loge(`Error: duplication of [${init_task_name}]`)
+						loge(`Error: Duplication of [${init_task_name}]`)
 						this.err = 2
 					} else {
 						this.init_block_task = block.cmd_block
@@ -275,7 +275,7 @@ class MkInfo {
 
 				if (this.find_task_block(tasks)) {
 					this.err = 2
-					this.err_msg = `Error: duplication of task [${tasks}] at line ${line_id}:\n`
+					this.err_msg = `Error: Duplication of task [${tasks}] at line ${line_id}:\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
@@ -283,7 +283,7 @@ class MkInfo {
 				if (default_flag) {
 					if (this.default_tasks.length > 0) {
 						this.err = 2
-						this.err_msg = `Error: duplication of default task [${tasks[0]}] at line ${line_id}:\n`
+						this.err_msg = `Error: Duplication of default task [${tasks[0]}] at line ${line_id}:\n`
 						this.err_msg += `==>    ${line}`
 						return
 					} else {
@@ -321,7 +321,7 @@ class MkInfo {
 
 		if (block.tasks.length > 0 && this.find_task_block(block.tasks)) {
 			this.err = 2
-			this.err_msg = `Error: duplication of task [${block[0]}]: at line ${line_id}.`
+			this.err_msg = `Error: Duplication of task [${block[0]}]: at line ${line_id}.`
 			return
 		}
 
@@ -1182,7 +1182,7 @@ class ArgInfo {
 			`\t((lineid=\${1}+@2))\n` +
 			'\t[ ${1} -lt @1 ] && exit 1\n' +
 			`\techo -e \"\\033[31m  SIGINT on [ ${cur_file} +\${lineid} ].\\033[0m\"\n` +
-			'\texit 1\n' + 
+			'\texit 1\n' +
 			'}\n'
 		// 截获错误，显示行号
 		let trap_err_func = "trap 'OnError ${LINENO}' ERR\n" +
@@ -1197,7 +1197,7 @@ class ArgInfo {
 			'\t    exit 1\n' +
 			'\telse\n' +
 			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. code \${errcode}. \\033[0m\"\n` +
-			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try\\033[0m\"\n` + 
+			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try\\033[0m\"\n` +
 			`\t    echo -e '\\033[33m  "set +euo pipefail"  or  "cmd1 | cmd2 || true". \\033[0m'\n` +
 			'\t    exit "${errcode}"\n' +
 			'\tfi\n' +
@@ -1221,7 +1221,9 @@ class ArgInfo {
 		// set -u 当使用未初始化变量，程序退出
 		// set -o pipefail 当在管道中出现错误，程序退出
 		let set_cmd = 'set -eu\n' + 'set -o pipefail\n'
+
 		// 定义 m() 函数，覆盖原来的定义
+		// 便于在 Trap Exit 里根据行号 区分 是正常命令调用，还是 m调用
 		let m_func_cmd = ''
 		if (this.scriptArgs[0] == 'm') {
 			let sys_path = std.getenv('PATH').split(':')
@@ -1255,7 +1257,7 @@ class ArgInfo {
 		// 动态计算行号
 		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + comment_line
 		let pre_lines_num = (shell_cmd + init_block_task).split(/\r?\n/).length
-		let all_lines_num = pre_lines_num + block.tasks.length + 1
+		let all_lines_num = pre_lines_num + block.cmd_block.length + 1
 		let offset_num = block.lineid - pre_lines_num + 1
 		shell_cmd = shell_cmd.replaceAll('@1', pre_lines_num.toString())
 		shell_cmd = shell_cmd.replaceAll('@2', offset_num.toString())

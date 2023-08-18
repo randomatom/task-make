@@ -38,11 +38,11 @@ fi
 
 
 [ -d /usr/local/bin ] || ${SUDO} mkdir -p /usr/local/bin
-echo -e "#!/bin/bash\nqjs /usr/local/bin/task.js \$@" > ${DL}/m
+echo -e '#!/bin/bash\nqjs /usr/local/bin/task.js "$@"' > ${DL}/m
 ${SUDO} cp ${DL}/task.js /usr/local/bin
 ${SUDO} cp ${DL}/qjs /usr/local/bin
 ${SUDO} cp ${DL}/m /usr/local/bin/m
-${SUDO} chmod ugo+rx /usr/local/bin/m
+${SUDO} chmod a+rx /usr/local/bin/m
 
 echo "Install OK"
 echo "Make sure that /usr/local/bin is in your \$PATH"

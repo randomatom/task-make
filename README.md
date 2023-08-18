@@ -150,7 +150,7 @@ all:
 3. 在 /usr/local/bin里 增加 m 脚本, 内容为
 ```
 #!/bin/bash
-qjs /usr/local/bin/task.js $@ 
+qjs /usr/local/bin/task.js "$@"
 ```
 
 ### 自动安装
