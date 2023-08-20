@@ -438,6 +438,23 @@ class ArgInfo {
 		this.change_workdir = false
 		this.default_task_file = std.getenv('_TASK_CUR_DEFAULT_FILE')
 		if (!this.default_task_file) this.default_task_file = 'task.mk'
+		this.is_subtask = false
+		if (std.getenv('_TASK_IS_SUBTASK')) {
+			this.is_subtask = true
+		}
+		// logi(`is_subtask: ${this.is_subtask}`)
+		this.tmp_dir = std.getenv('_TASK_TMP_DIR')
+		if (!this.tmp_dir) {
+			if (os.lstat('/dev/shm')[1] == 0) {
+				this.tmp_dir = `/dev/shm/mk_task_dir@${std.getenv('USER')}`
+			} else {
+				this.tmp_dir = `/tmp/mk_task_dir@${std.getenv('USER')}`
+			}
+			if (os.lstat(this.tmp_dir)[1] != 0) {
+				os.mkdir(this.tmp_dir)
+				os.exec(['chmod', '700', this.tmp_dir])
+			}
+		}
 		this.err = this.parse_args()
 	}
 
@@ -1198,7 +1215,7 @@ class ArgInfo {
 			'\telse\n' +
 			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. code \${errcode}. \\033[0m\"\n` +
 			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try\\033[0m\"\n` +
-			`\t    echo -e '\\033[33m  "set +euo pipefail"  or  "cmd1 | cmd2 || true". \\033[0m'\n` +
+			`\t    echo -e '\\033[33m  "set +eo pipefail"  or  "cmd1 | cmd2 || true". \\033[0m'\n` +
 			'\t    exit "${errcode}"\n' +
 			'\tfi\n' +
 			'}\n'
@@ -1265,20 +1282,11 @@ class ArgInfo {
 		shell_cmd += init_block_task + block.cmd_block
 
 		let tag = crc16(shell_cmd)
-		let tmp_dir = `/tmp/mk_task_dir@${std.getenv('USER')}`
+		let tmp_dir = this.tmp_dir
 		// log_obj(block)
 		let shell_name = `${tmp_dir}/${block.tasks[0]}_${tag}.sh`
 		// logd(`${shell_name}`)
 
-		if (os.lstat(tmp_dir)[1] != 0) {
-			os.mkdir(tmp_dir)
-			os.exec(['chmod', '700', tmp_dir])
-		}
-
-		if (Math.random() < 0.001) {
-			// 过一段时间清理临时目录
-			os.exec(['rm', '-f', tmp_dir + '/*.sh'])
-		}
 
 		if (os.lstat(shell_name)[1] != 0) {
 			let fd = std.open(shell_name, 'wb+')
@@ -1306,6 +1314,8 @@ class ArgInfo {
 		let real_path = os.realpath(this.expand_file(this.file))[0]
 		std.setenv('_TASK_CUR_DEFAULT_FILE', real_path)
 		std.setenv('_TASK_ROOT_WORKDIR', this.task_root_workdir)
+		std.setenv('_TASK_TMP_DIR', this.tmp_dir)
+		std.setenv('_TASK_IS_SUBTASK', 1)
 		// logd(bash_cmd)
 		let bash_cmd = ['/bin/bash', shell_name].concat(shell_args)
 		return os.exec(bash_cmd)
@@ -1342,6 +1352,15 @@ function main() {
 	let ret = argInfo.err
 	if (argInfo.err == 0) {
 		ret = argInfo.do_main()
+		// 过一段时间清理临时目录
+		if (ret == 0 && !argInfo.is_subtask && Math.random() < 0.01) {
+			let dirs_st = os.readdir(argInfo.tmp_dir)
+			if (dirs_st[1] == 0) {
+				dirs_st[0].forEach((f, _) => {
+					if (f.endsWith('.sh')) os.remove(argInfo.tmp_dir + '/' + f)
+				})
+			}
+		}
 	}
 	return ret
 }
