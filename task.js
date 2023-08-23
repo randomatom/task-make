@@ -1214,8 +1214,7 @@ class ArgInfo {
 			'\t    exit 1\n' +
 			'\telse\n' +
 			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. code \${errcode}. \\033[0m\"\n` +
-			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try\\033[0m\"\n` +
-			`\t    echo -e '\\033[33m  "set +eo pipefail"  or  "cmd1 | cmd2 || true". \\033[0m'\n` +
+			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try \\"cmd1 | cmd2 || true\\"\\033[0m\"\n` +
 			'\t    exit "${errcode}"\n' +
 			'\tfi\n' +
 			'}\n'
@@ -1272,14 +1271,15 @@ class ArgInfo {
 		}
 		let comment_line = '\n##########################\n\n'
 		// 动态计算行号
+		let user_cmd_block = init_block_task + block.cmd_block.trimEnd()
 		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + comment_line
-		let pre_lines_num = (shell_cmd + init_block_task).split(/\r?\n/).length
-		let all_lines_num = pre_lines_num + block.cmd_block.length + 1
+		let pre_lines_num = shell_cmd.split(/\r?\n/).length
+		let all_lines_num = pre_lines_num + user_cmd_block.split(/\r?\n/).length
 		let offset_num = block.lineid - pre_lines_num + 1
 		shell_cmd = shell_cmd.replaceAll('@1', pre_lines_num.toString())
 		shell_cmd = shell_cmd.replaceAll('@2', offset_num.toString())
 		shell_cmd = shell_cmd.replaceAll('@3', all_lines_num.toString())
-		shell_cmd += init_block_task + block.cmd_block
+		shell_cmd += user_cmd_block
 
 		let tag = crc16(shell_cmd)
 		let tmp_dir = this.tmp_dir
