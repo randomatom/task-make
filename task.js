@@ -128,11 +128,18 @@ $ m -e @new_mod
 import * as os from 'os'
 import * as std from 'std'
 
-let log = (s) => console.log(s)
-let logd = (s) => console.log(s)
-let logi = (s) => console.log('\x1b[0;33m' + s + '\x1b[0m')
-let loge = (s) => console.log('\x1b[0;31m' + s + '\x1b[0m')
-let log_obj = (s) => console.log(JSON.stringify(s, null, 4))
+function time_stamp() {
+	let d = new Date()
+	return std.sprintf('[%02d:%02d:%02d] ', d.getHours(), d.getMinutes(), d.getSeconds())
+}
+
+let log = (s) => print(s)
+let logd = (s) => print(s)
+let logi = (s) => print('\x1b[0;33m' + s + '\x1b[0m')
+let loge = (s) => print('\x1b[0;31m' + s + '\x1b[0m')
+let logi2 = (s) => print('\x1b[0;33m' + time_stamp() + s + '\x1b[0m')
+let loge2 = (s) => print('\x1b[0;31m' + time_stamp() + s + '\x1b[0m')
+let log_obj = (s) => print(JSON.stringify(s, null, 4))
 
 function input_str(s) {
 	std.out.printf('\x1b[0;33m' + s + '\x1b[0m')
@@ -144,11 +151,11 @@ class MkInfo {
 	constructor(file) {
 		this.file = file
 		// block_list: [block, block, ...]
-		//        block: { tasks: [], cmd_block: '', comment: '', lineid: 0 }
+		//     block: { tasks: [name, name，...], cmd_block: '', comment: '', start_line_num: 0 }
 		this.block_list = []
 		// default_tasks: [name, name, ...]
 		this.default_tasks = []
-		this.init_block_task = ''
+		this.init_cmd_block = ''
 		this.err = 0
 		this.err_msg = ''
 		this.parse_file()
@@ -221,32 +228,32 @@ class MkInfo {
 			return 1
 		}
 
-		let null_block = { tasks: [], cmd_block: '', comment: '', lineid: 0 }
+		let null_block = { tasks: [], cmd_block: '', comment: '', start_line_num: 0 }
 		// 注意：要用拷贝语法，才能创建一个新的对象。直接赋值只沿用同一对象
 		let block = { ...null_block }
 		let default_flag = false
-		let line_id = 0
+		let line_num = 0
 
 		let line
 		let init_task_name = '__init__'
-		let after_task_first_line = false
+		let on_first_line_after_taskname = false
 		while ((line = fd.getline()) != undefined) {
-			line_id++
+			line_num++
 			if (line.trim() == '') {
 				if (block.tasks.length == 0) continue
 				else line = '\t'
 			}
 			// logd('+ ' + line)
 			let tasks = []
-			let task_line_id = 0
+			let task_line_num = 0
 			if (line.includes(':')) {
 				let m0 = line.match(/^(__init__)\s*:/)
 				let m1 = line.match(/^(\*?)([A-Za-z]\w*)\s*(?:\/\s*([A-Za-z]\w*)\s*)?:/)
 				if (m0) {
-					task_line_id = line_id
+					task_line_num = line_num
 					tasks = [init_task_name]
 				} else if (m1) {
-					task_line_id = line_id
+					task_line_num = line_num
 					default_flag = m1[1] == '*'
 					tasks = [m1[2]]
 					if (m1[3]) tasks.push(m1[3])
@@ -255,11 +262,11 @@ class MkInfo {
 
 			if (tasks.length > 0) {
 				if (block.tasks[0] == init_task_name && block.cmd_block) {
-					if (this.init_block_task != '') {
+					if (this.init_cmd_block != '') {
 						loge(`Error: Duplication of [${init_task_name}]`)
 						this.err = 2
 					} else {
-						this.init_block_task = block.cmd_block
+						this.init_cmd_block = block.cmd_block
 						block = { ...null_block }
 					}
 				} else if (block.tasks.length > 0) {
@@ -268,14 +275,14 @@ class MkInfo {
 						block = { ...null_block }
 					} else {
 						this.err = 2
-						this.err_msg = `Error: task [${block.tasks[0]}] have NO command. at line ${line_id}.`
+						this.err_msg = `Error: task [${block.tasks[0]}] have NO command. at line ${line_num}.`
 						return
 					}
 				}
 
 				if (this.find_task_block(tasks)) {
 					this.err = 2
-					this.err_msg = `Error: Duplication of task [${tasks}] at line ${line_id}:\n`
+					this.err_msg = `Error: Duplication of task [${tasks}] at line ${line_num}:\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
@@ -283,7 +290,7 @@ class MkInfo {
 				if (default_flag) {
 					if (this.default_tasks.length > 0) {
 						this.err = 2
-						this.err_msg = `Error: Duplication of default task [${tasks[0]}] at line ${line_id}:\n`
+						this.err_msg = `Error: Duplication of default task [${tasks[0]}] at line ${line_num}:\n`
 						this.err_msg += `==>    ${line}`
 						return
 					} else {
@@ -292,28 +299,28 @@ class MkInfo {
 					}
 				}
 				block.tasks = tasks
-				block.lineid = task_line_id
-				after_task_first_line = true
+				block.start_line_num = task_line_num
+				on_first_line_after_taskname = true
 			} else {
 				// cmd块 区域
 				if (block.tasks.length == 0) {
 					this.err = 2
-					this.err_msg = `Error [1] at line ${line_id}:\n`
+					this.err_msg = `Error [1] at line ${line_num}:\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
 				if (!line.match(/^\t/)) {
 					this.err = 2
-					this.err_msg = `Error [2] at line ${line_id}:\n`
+					this.err_msg = `Error [2] at line ${line_num}:\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
-				if (after_task_first_line) {
+				if (on_first_line_after_taskname) {
 					// 当注释以 ## 开头，将提取并显示
 					if (line.trim().startsWith('##')) {
 						block.comment = line.trim().substring(2)
 					}
-					after_task_first_line = false
+					on_first_line_after_taskname = false
 				}
 				block.cmd_block += line.slice(1) + '\n'
 			}
@@ -321,7 +328,7 @@ class MkInfo {
 
 		if (block.tasks.length > 0 && this.find_task_block(block.tasks)) {
 			this.err = 2
-			this.err_msg = `Error: Duplication of task [${block[0]}]: at line ${line_id}.`
+			this.err_msg = `Error: Duplication of task [${block[0]}]: at line ${line_num}.`
 			return
 		}
 
@@ -334,7 +341,7 @@ class MkInfo {
 				}
 			} else {
 				this.err = 2
-				this.err_msg = `Error: task [${block.tasks[0]}] have NO command. at line ${line_id}.`
+				this.err_msg = `Error: task [${block.tasks[0]}] have NO command. at line ${line_num}.`
 				return
 			}
 		}
@@ -347,7 +354,7 @@ class MkInfo {
 		// log(`init_block_task = ${ this.init_block_task } `)
 		log(`err = ${this.err} `)
 		this.block_list.forEach((x, idx) => {
-			log(`  task[${idx}]: ${x.task}, lineid: ${x.lineid} `)
+			log(`  task[${idx}]: ${x.task}, start_line_num: ${x.start_line_num} `)
 			// log(`      cmd: ${ x.cmd_block } `)
 		})
 		log('--------------------')
@@ -455,6 +462,7 @@ class ArgInfo {
 				os.exec(['chmod', '700', this.tmp_dir])
 			}
 		}
+		this.run_task_flag = 0
 		this.err = this.parse_args()
 	}
 
@@ -855,8 +863,8 @@ class ArgInfo {
 			fd.puts(`}\n\n`)
 			return 0
 		}
-		if (info.init_block_task) {
-			put_task(fd, "__init__", info.init_block_task)
+		if (info.init_cmd_block) {
+			put_task(fd, "__init__", info.init_cmd_block)
 		}
 		for (let i = 0; i < info.block_list.length; i++) {
 			let b = info.block_list[i]
@@ -867,7 +875,7 @@ class ArgInfo {
 		}
 
 		let init_func = ''
-		if (info.init_block_task) {
+		if (info.init_cmd_block) {
 			init_func += '    __init__\n'
 		}
 
@@ -913,7 +921,7 @@ class ArgInfo {
 		fd.puts(main_shell_str)
 		fd.close()
 		os.exec(['chmod', '+x', this.compile_bash_file])
-		logi(`compile bash file [${this.compile_bash_file}] success!`)
+		logi2(`compile bash file [${this.compile_bash_file}] success!`)
 		return 0
 	}
 
@@ -964,7 +972,7 @@ class ArgInfo {
 				}
 				fd.puts('*make:\n\t[ -f Makefile ] || [ -f makefile ] && make')
 				fd.close()
-				logi(`create ${file}`)
+				logi2(`create ${file}`)
 				let link_file = this.expand_file(this.file)
 				os.symlink(file, link_file)
 				os.exec(['vi', file, '+'])
@@ -988,7 +996,7 @@ class ArgInfo {
 						}
 						os.exec(['vi', '+', file])
 					} else {
-						os.exec(['vi', `+${block.lineid}`, file])
+						os.exec(['vi', `+${block.start_line_num}`, file])
 					}
 				} else {
 					loge(info.err_msg)
@@ -1124,13 +1132,13 @@ class ArgInfo {
 					if (this.shell_args.length > 0) {
 						run_info = run_info.slice(0, -1) + `${this.shell_args} ]`
 					}
-					logi(run_info)
+					logi2(run_info)
 					if (cur_wd[1] == 0 && new_wd[1] == 0 && cur_wd[0] != new_wd[0]) {
 						// let p1 = this.get_relative_path(cur_wd[0], this.task_root_workdir)
 						let p2 = this.get_pretty_relative_path(new_wd[0], this.task_root_workdir)
 						logi(`     % Enter Dir: [ ${p2} ]`)
 					}
-					return this.run_task(info.file, block, info.init_block_task, this.shell_args, new_workdir)
+					return this.run_task(info.file, block, info.init_cmd_block, this.shell_args, new_workdir)
 				} else {
 					loge(`Task [${this.task}] DON'T exist!`)
 					return 1
@@ -1196,9 +1204,9 @@ class ArgInfo {
 		let trap_int_func = "trap 'onCtrlC ${LINENO}' INT\n" +
 			'onCtrlC() {\n' +
 			'\t_SIGINT_FLAG=1\n' +
-			`\t((lineid=\${1}+@2))\n` +
+			`\t((line_num=\${1}+@2))\n` +
 			'\t[ ${1} -lt @1 ] && exit 1\n' +
-			`\techo -e \"\\033[31m  SIGINT on [ ${cur_file} +\${lineid} ].\\033[0m\"\n` +
+			`\techo -e \"\\033[31m  SIGINT on [ ${cur_file} +\${line_num} ].\\033[0m\"\n` +
 			'\texit 1\n' +
 			'}\n'
 		// 截获错误，显示行号
@@ -1206,14 +1214,14 @@ class ArgInfo {
 			'OnError() {\n' +
 			'\terrcode=$?\n' +
 			'\t_ERROR_FLAG=1\n' +
-			`\t((lineid=\${1}+@2))\n` +
+			`\t((line_num=\${1}+@2))\n` +
 			// '\techo OnError @ $@, err = $errcode\n' +
 			'\t[ ${1} -lt @1 ] && exit 1\n' +
 			'\tif [ $errcode -eq 127 ]; then\n' +
-			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. \\033[0m\"\n` +
+			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${line_num} ]. \\033[0m\"\n` +
 			'\t    exit 1\n' +
 			'\telse\n' +
-			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${lineid} ]. code \${errcode}. \\033[0m\"\n` +
+			`\t    echo -e \"\\033[31m  Error on [ ${cur_file} +\${line_num} ]. code \${errcode}. \\033[0m\"\n` +
 			`\t    echo -e \"\\033[33m  To allow the program to continue running after an error, try \\"cmd1 | cmd2 || true\\"\\033[0m\"\n` +
 			'\t    exit "${errcode}"\n' +
 			'\tfi\n' +
@@ -1222,13 +1230,13 @@ class ArgInfo {
 			'OnExit() {\n' +
 			'\terrcode=$?\n' +
 			// '\techo OnExit @ $@, errcode = $errcode\n' +
-			`\t((lineid=\${1}+@2))\n` +
+			`\t((line_num=\${1}+@2))\n` +
 			'\t[ ${errcode} -eq 0 ] && exit 0\n' +
 			'\t[ -z ${_ERROR_FLAG+x} ] || exit ${errcode}\n' +
 			'\t[ -z ${_SIGINT_FLAG+x} ] || exit ${errcode}\n' +
 			'\t[ ${1} -lt @1 ] && exit ${errcode}\n' +
 			'\t[ ${1} -ge @3 ] && exit 0\n' +
-			`\techo -e \"\\033[31m  Exit \${errcode} on [ ${cur_file} +\${lineid} ]. \\033[0m\"\n` +
+			`\techo -e \"\\033[31m  Exit \${errcode} on [ ${cur_file} +\${line_num} ]. \\033[0m\"\n` +
 			'\texit "${errcode}"\n' +
 			'}\n'
 		let trap_cmd = trap_int_func + trap_err_func + trap_exit_func
@@ -1275,7 +1283,7 @@ class ArgInfo {
 		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + comment_line
 		let pre_lines_num = shell_cmd.split(/\r?\n/).length
 		let all_lines_num = pre_lines_num + user_cmd_block.split(/\r?\n/).length
-		let offset_num = block.lineid - pre_lines_num + 1
+		let offset_num = block.start_line_num - pre_lines_num + 1
 		shell_cmd = shell_cmd.replaceAll('@1', pre_lines_num.toString())
 		shell_cmd = shell_cmd.replaceAll('@2', offset_num.toString())
 		shell_cmd = shell_cmd.replaceAll('@3', all_lines_num.toString())
@@ -1300,7 +1308,7 @@ class ArgInfo {
 				if (data == shell_cmd) {
 					fd.close()
 				} else {
-					logi('crc16 error! mybe error.')
+					// logi('crc16 error! mybe error.')
 					fd.close()
 					let fd2 = std.open(shell_name, 'wb')
 					if (!fd2) return 1
@@ -1318,7 +1326,14 @@ class ArgInfo {
 		std.setenv('_TASK_IS_SUBTASK', 1)
 		// logd(bash_cmd)
 		let bash_cmd = ['/bin/bash', shell_name].concat(shell_args)
-		return os.exec(bash_cmd)
+		this.run_task_flag = 1
+		let t0 = new Date().getTime()
+		let ret = os.exec(bash_cmd)
+		if (!this.is_subtask) {
+			let t1 = new Date().getTime()
+			logi2('Bye!' + ` (${(t1 - t0) / 1000} s)`)
+		}
+		return ret
 	}
 }
 
