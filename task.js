@@ -13,9 +13,9 @@ Date: 2023/06/13
 
 ## task.mk 语法
 1. 以 : 结尾的行，为任务行，后面的命令会被执行
-3. 以 * 开头的行，为默认任务，当执行 m, 后面没有参数，直接执行该任务
-1. 以 # 开头的行，为注释行，不会被执行
-2. 以 ## 开头的行，为注释行，同时会被 -l 参数显示
+2. 以 * 开头的行，为默认任务，当执行 m, 后面没有参数，直接执行该任务
+3. 以 # 开头的行，为注释行，不会被执行
+4. 以 ## 开头的行，为注释行，同时会被 -l 参数显示
 
 task.mk 范例如下:
 -------------------------------
@@ -29,7 +29,7 @@ cmake:
 	mkdir build
 	cd build
 	cmake ..
- *make:
+*make:
 	# [*]代表默认任务. 当执行 m, 后面没有参数，直接执行该任务
 	cd build
 	make -j8
@@ -76,7 +76,7 @@ all:
 1. init_rc.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
 2. run_file_list.txt: 本机运行过的所有 *.mk 文件的列表，方便回顾
 3. repo: 全部模块的存放目录
- 
+
 ## 使用
 
 ### 本地task.mk
@@ -86,18 +86,22 @@ Select a Task:
 	  1. make
 	  2. install
 	  3. claen                       # 任务后面第一行开头有两个##, 该行会被显示
-	  4. make_and_push / mp          # 上面的"/"后面的mp是简称，方便输入
+==>   4. make_and_push / mp          # 上面的"/"后面的mp是简称，方便输入
 	  5. all
 
-2. 执行当前任务, 以下三者效果一样
-$ m make_and_push  (全名)
-$ m mp             (简称)
-$ m 4              (序号)
+2. 执行任务, 以下三者效果一样
+$ m make_and_push  # 全名
+$ m mp             # 简称
+$ m 4              # 序号
 
-3. 当前目录新建task.mk
+3. 执行默认任务
+$ m        # 不带任何参数
+$ m 0      # 序号0 代表默认目标
+
+4. 当前目录新建task.mk
 $ m -c
 
-4. 编辑当前目录task.mk
+5. 编辑当前目录task.mk
 $ m -e
 
 ### 仓库模块
@@ -122,7 +126,6 @@ $ m -c @new_mod
 
 5. 编辑模块
 $ m -e @new_mod
-
 */
 
 import * as os from 'os'
@@ -565,7 +568,7 @@ class ArgInfo {
 				case 'r':
 					this.action = 'run'
 				case 'w':
-					// 和 make -C 一样
+					// 类似 make -C 参数
 					this.change_workdir = true
 					break
 				case 'C':
@@ -1342,8 +1345,8 @@ function main() {
 	// example:
 	// m
 	// m  task
-	// m  @build.task
-	// m  @build.task             param1       param2
+	// m  @build:task
+	// m  @build:task   param1      param2
 	// m      -l        @
 	// m      -c        @build
 	// m      -l        @build:task

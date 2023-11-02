@@ -15,6 +15,7 @@
       * [本地task.mk](#本地taskmk)
       * [全局仓库](#全局仓库)
       * [调用其他路径模块的任务](#调用其他路径模块的任务)
+      * [利用 heredoc 使用其他脚本](#利用-heredoc-使用其他脚本)
       * [将 task.mk 编译成 bash 脚本](#将-taskmk-编译成-bash-脚本)
 
 ## 概述
@@ -328,6 +329,21 @@ Working Directory: task-make/example/simple_exam/sub_mod. Create hello.txt
 ./hello.txt
 ```
 
+### 利用 heredoc 使用其他脚本
+
+
+```makefile
+run_py_script:
+    python << EOF
+    print('hello world')
+    EOF
+
+run_py_script_with_param:
+    python - abc << EOF
+    import sys
+    print('hello ' + sys.argv[1])
+    EOF
+```
 
 ### 将 task.mk 编译成 bash 脚本
 
@@ -351,6 +367,4 @@ Select a Task:
 Enter a number? 12
 Run Task: [ all ]
 ```
-
-
 
