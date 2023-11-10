@@ -278,14 +278,14 @@ class MkInfo {
 						block = { ...null_block }
 					} else {
 						this.err = 2
-						this.err_msg = `Error: task [${block.tasks[0]}] have NO command. at line ${line_num}.`
+						this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command..`
 						return
 					}
 				}
 
 				if (this.find_task_block(tasks)) {
 					this.err = 2
-					this.err_msg = `Error: Duplication of task [${tasks}] at line ${line_num}:\n`
+					this.err_msg = `Error at line ${line_num}. Duplication of task [${tasks}].\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
@@ -293,7 +293,7 @@ class MkInfo {
 				if (default_flag) {
 					if (this.default_tasks.length > 0) {
 						this.err = 2
-						this.err_msg = `Error: Duplication of default task [${tasks[0]}] at line ${line_num}:\n`
+						this.err_msg = `Error at line ${line_num}. Duplication of default task [${tasks[0]}].\n`
 						this.err_msg += `==>    ${line}`
 						return
 					} else {
@@ -308,13 +308,13 @@ class MkInfo {
 				// cmd块 区域
 				if (block.tasks.length == 0) {
 					this.err = 2
-					this.err_msg = `Error [1] at line ${line_num}:\n`
+					this.err_msg = `Error at line ${line_num}. Task name is empty.\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
 				if (!line.match(/^\t/)) {
 					this.err = 2
-					this.err_msg = `Error [2] at line ${line_num}:\n`
+					this.err_msg = `Error at line ${line_num}. This line must start with "tab" character.\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
@@ -331,7 +331,7 @@ class MkInfo {
 
 		if (block.tasks.length > 0 && this.find_task_block(block.tasks)) {
 			this.err = 2
-			this.err_msg = `Error: Duplication of task [${block[0]}]: at line ${line_num}.`
+			this.err_msg = `Error at line ${line_num}. Duplication of task [${block[0]}].`
 			return
 		}
 
@@ -344,7 +344,7 @@ class MkInfo {
 				}
 			} else {
 				this.err = 2
-				this.err_msg = `Error: task [${block.tasks[0]}] have NO command. at line ${line_num}.`
+				this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command.`
 				return
 			}
 		}
