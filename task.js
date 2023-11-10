@@ -46,6 +46,7 @@ make_and_push / mp:
 	make -j8
 	adb push test /data/app/test
 test:
+	### 三个#表示增加分隔线
 	for f in `ls *.mk` ; do
 		cat $f
 	done
@@ -67,13 +68,13 @@ all:
 ## task_main_dir 目录结构
 可通过 _TASK_PROFILE_DIR 环境变量设置指定，没有设置则默认路径 ~/.local/task.
 
-├── init_rc.sh
+├── __init__.sh
 ├── run_file_list.txt
 └─- repo
 	├── build.mk
 	└─── init.mk
 
-1. init_rc.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
+1. __init__.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
 2. run_file_list.txt: 本机运行过的所有 *.mk 文件的列表，方便回顾
 3. repo: 全部模块的存放目录
 
@@ -87,7 +88,9 @@ Select a Task:
 	  2. install
 	  3. claen                       # 任务后面第一行开头有两个##, 该行会被显示
 ==>   4. make_and_push / mp          # 上面的"/"后面的mp是简称，方便输入
-	  5. all
+      --------------------
+	  5. test                        # 三个#表示增加分隔线
+	  6. all
 
 2. 执行任务, 以下三者效果一样
 $ m make_and_push  # 全名
@@ -396,9 +399,24 @@ class MkInfo {
 				task_max_length = 30
 			}
 			this.block_list.forEach((x, idx) => {
+				if (x.comment && x.comment.startsWith('#') && is_simple != 's') {
+					let sep_line = ''
+					if (this.block_list.length < 10) sep_line += '      ---';
+					else sep_line += '      ----'
+					for (let i = 0; i < task_max_length; i++) {
+						sep_line += '-'
+					}
+					log(sep_line)
+					let start_new = 0
+					for (let i = 0; i < x.comment.length; i++) {
+						if (x.comment[i] == '#') start_new += 1
+					}
+					x.comment = x.comment.slice(start_new)
+				}
+
 				let line = ''
-				if (this.default_tasks.length > 0 && x.tasks == this.default_tasks) line = '==>  '
-				else line = '     '
+				if (this.default_tasks.length > 0 && x.tasks == this.default_tasks) line += '==>  '
+				else line += '     '
 
 				let ord = idx + 1
 				if (ord <= 9) line += ' ' + ord
@@ -1271,7 +1289,7 @@ class ArgInfo {
 
 		let init_cmd = ''
 		if (this.task_main_dir) {
-			let init_file = this.task_main_dir + '/init_rc.sh'
+			let init_file = this.task_main_dir + '/__init__.sh'
 			if (os.lstat(init_file)[1] == 0) {
 				init_cmd = `. ${init_file}\n`
 			}

@@ -113,6 +113,7 @@ make_and_push / mp:
 	make -j8
 	adb push test /data/app/test
 test:
+	### 三个#表示增加分隔线
 	for f in $(find . -name "*.mk") ; do
 		cat $f
 	done
@@ -128,7 +129,7 @@ all:
 可通过 _TASK_PROFILE_DIR 环境变量设置指定位置。没有设置则默认路径 `~/.local/task`.
 ```
 ├── README.md
-├── init_rc.sh
+├── __init__.sh
 ├── run_file_list.txt
 └── repo
     ├── build.mk
@@ -136,7 +137,7 @@ all:
     └── test.mk
 ```
 
-1. init_rc.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
+1. __init__.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
 2. run_file_list.txt: 本机运行过的所有 *.mk 文件的列表，方便回顾
 3. repo: 全局模块的存放目录
 
@@ -178,7 +179,9 @@ Select a Task:
        3. install
        4. claen                 # 目标后面第一行开头有两个##, 该行会被显示
        5. make_and_push / mp    # 上面的"/"后面的mp是简称，方便输入
-       6. all
+      --------------------
+       6. test                  # 三个#表示增加分隔线
+       7. all
 ```
 
 2. 执行目标。有三者方式，效果一样。
