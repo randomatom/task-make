@@ -281,7 +281,7 @@ class MkInfo {
 						block = { ...null_block }
 					} else {
 						this.err = 2
-						this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command..`
+						this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command.\n`
 						return
 					}
 				}
@@ -334,7 +334,7 @@ class MkInfo {
 
 		if (block.tasks.length > 0 && this.find_task_block(block.tasks)) {
 			this.err = 2
-			this.err_msg = `Error at line ${line_num}. Duplication of task [${block[0]}].`
+			this.err_msg = `Error at line ${line_num}. Duplication of task [${block[0]}].\n`
 			return
 		}
 
@@ -347,7 +347,7 @@ class MkInfo {
 				}
 			} else {
 				this.err = 2
-				this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command.`
+				this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command.\n`
 				return
 			}
 		}
@@ -533,7 +533,7 @@ class ArgInfo {
 		let ret = 1
 		let arr = arg.split(':')
 		if (arr.length == 2 && (arr[0] != '' || arr[1] != '')) {
-			let m_file = arr[0].match(/^@\w+(\/|\w|\.|-)+$|^(\/|\w|\.|-)+$|^$/)
+			let m_file = arr[0].match(/^@\w+(\/|\w|\.|-)*$|^(\/|\w|\.|-)+$|^$/)
 			let m_task = arr[1].match(/^[A-Za-z]\w*$|^\d+$|^$/)
 			if (m_file && m_task) {
 				if (m_file[0]) this.file = m_file[0]
