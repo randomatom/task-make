@@ -311,7 +311,7 @@ class MkInfo {
 				// cmd块 区域
 				if (block.tasks.length == 0) {
 					this.err = 2
-					this.err_msg = `Error at line ${line_num}. Task name is empty.\n`
+					this.err_msg = `Error at line ${line_num}. The task name is invalid. For example "Aa_1:" is OK. "Aa-1:" or "1A_1:" is Error.\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
