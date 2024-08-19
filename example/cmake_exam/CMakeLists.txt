@@ -24,9 +24,19 @@ add_definitions("-fsigned-char")
 
 # 内存检测
 if (ENABLE_MEM_CHECK)
-	message(STATUS "====> option ENABLE_MEM_CHECK ON")
-	add_definitions(-fsanitize=address -fno-omit-frame-pointer)
-	add_link_options(-fsanitize=address)
+	# https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html
+	# -fsanitize 选项。互斥, 建议每个都排查一遍
+	set(MEM_CHK_OPTION "address")
+	set(MEM_CHK_OPTION_LIST "address" "leak" "thread" "undefined")
+	list(FIND MEM_CHK_OPTION_LIST ${MEM_CHK_OPTION} MEM_INDEX)
+	if(${MEM_INDEX} GREATER -1)
+		add_definitions(-Og) # 关闭原有优化选项
+		add_definitions(-fsanitize=${MEM_CHK_OPTION} -fno-omit-frame-pointer)
+		add_link_options(-fsanitize=${MEM_CHK_OPTION})
+		message(STATUS "====> option ENABLE_MEM_CHECK ON. [-fsanitize=${MEM_CHK_OPTION}]")
+	else()
+		message(FATAL_ERROR "MEM_CHK_OPTION error")
+	endif()
 endif (ENABLE_MEM_CHECK)
 
 # gprof

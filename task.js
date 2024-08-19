@@ -460,6 +460,7 @@ class ArgInfo {
 		this.task_main_dir = task_main_dir
 		this.task_repo_dir = task_main_dir + '/repo'
 		this.task_root_workdir = std.getenv('_TASK_ROOT_WORKDIR')
+		this.err = 0
 		if (!this.task_root_workdir) {
 			this.task_root_workdir = os.getcwd()[0]
 		}
@@ -479,12 +480,21 @@ class ArgInfo {
 				this.tmp_dir = `/tmp/mk_task_dir@${std.getenv('USER')}`
 			}
 			if (os.lstat(this.tmp_dir)[1] != 0) {
-				os.mkdir(this.tmp_dir)
-				os.exec(['chmod', '700', this.tmp_dir])
+				if (os.mkdir(this.tmp_dir) == 0) {
+					if (os.exec(['chmod', '700', this.tmp_dir]) != 0) {
+						loge(`chmod ${this.tmp_dir} error!`)
+						this.err = 1
+					}
+				} else {
+					loge(`create ${this.tmp_dir} error!`)
+					this.err = 1
+				}
 			}
 		}
 		this.run_task_flag = 0
-		this.err = this.parse_args()
+		if (this.err == 0) {
+			this.err = this.parse_args()
+		}
 	}
 
 	update_run_list() {
@@ -497,6 +507,8 @@ class ArgInfo {
 				if (fd) {
 					fd.puts(mk_full_path + '\n')
 					fd.close()
+				} else {
+					loge(`open ${run_file_list_fname} error!`)
 				}
 			} else {
 				let file_list = fd.readAsString().split('\n')
@@ -510,17 +522,21 @@ class ArgInfo {
 				fd.close()
 				if (!is_in_list) {
 					fd = std.open(run_file_list_fname, 'w')
-					file_list.push(mk_full_path)
-					file_list.sort()
-					file_list.forEach((x, idx) => {
-						let fname = x.trim()
-						if (fname) {
-							if (os.lstat(fname)[1] == 0) {
-								fd.puts(fname + '\n')
+					if (fd) {
+						file_list.push(mk_full_path)
+						file_list.sort()
+						file_list.forEach((x, idx) => {
+							let fname = x.trim()
+							if (fname) {
+								if (os.lstat(fname)[1] == 0) {
+									fd.puts(fname + '\n')
+								}
 							}
-						}
-					})
-					fd.close()
+						})
+						fd.close()
+					} else {
+						loge(`open ${run_file_list_fname} error!`)
+					}
 				}
 			}
 		}
@@ -1319,7 +1335,10 @@ class ArgInfo {
 
 		if (os.lstat(shell_name)[1] != 0) {
 			let fd = std.open(shell_name, 'wb+')
-			if (!fd) return 1
+			if (!fd) {
+				loge(`create ${shell_name} error!`)
+				return 1
+			}
 			fd.puts(shell_cmd)
 			fd.close()
 		} else {
@@ -1332,11 +1351,15 @@ class ArgInfo {
 					// logi('crc16 error! mybe error.')
 					fd.close()
 					let fd2 = std.open(shell_name, 'wb')
-					if (!fd2) return 1
+					if (!fd2) {
+						loge(`create ${shell_name} error!`)
+						return 1
+					}
 					fd2.puts(shell_cmd)
 					fd2.close()
 				}
 			} else {
+				loge(`open ${shell_name} error!`)
 				return 1
 			}
 		}
