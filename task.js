@@ -14,8 +14,9 @@ Date: 2023/06/13
 ## task.mk 语法
 1. 以 : 结尾的行，为任务行，后面的命令会被执行
 2. 以 * 开头的行，为默认任务，当执行 m, 后面没有参数，直接执行该任务
-3. 以 # 开头的行，为注释行，不会被执行
-4. 以 ## 开头的行，为注释行，同时会被 -l 参数显示
+3. 以 "###" 开头的行，分隔行, 会显示'--------'
+4. 以 "^\t#" 开头的行，为注释行，不会被执行
+5. 以 "^\t##" 开头的行，为注释行，同时会被 -l 参数显示
 
 task.mk 范例如下:
 -------------------------------
@@ -234,7 +235,7 @@ class MkInfo {
 			return 1
 		}
 
-		let null_block = { tasks: [], cmd_block: '', comment: '', start_line_num: 0 }
+		let null_block = { tasks: [], cmd_block: '', comment: '', start_line_num: 0 , with_div: false}
 		// 注意：要用拷贝语法，才能创建一个新的对象。直接赋值只沿用同一对象
 		let block = { ...null_block }
 		let default_flag = false
@@ -249,12 +250,30 @@ class MkInfo {
 				if (block.tasks.length == 0) continue
 				else line = '\t'
 			}
+
+			let m_div = line.match(/^###/)
+			if (m_div) {
+				if (block.tasks.length > 0) {
+					this.block_list.push(block)
+				} 
+				block = { ...null_block }
+				block.with_div = true
+				// loge('---------')
+				continue
+			}
+
+			let m_comment = line.match(/^#/)
+			if (m_comment) {
+				continue
+			}
+
 			// logd('+ ' + line)
 			let tasks = []
 			let task_line_num = 0
 			if (line.includes(':')) {
 				let m0 = line.match(/^(__init__)\s*:/)
-				let m1 = line.match(/^(\*?)([A-Za-z]\w*)\s*(?:\/\s*([A-Za-z]\w*)\s*)?:/)
+				let m1 = line.match(/^(\*?)([A-Za-z][\w|-]*)\s*(?:\/\s*([A-Za-z][\w|-]*)\s*)?:/)
+				//                      *      TASK      /             s             :
 				if (m0) {
 					task_line_num = line_num
 					tasks = [init_task_name]
@@ -311,13 +330,13 @@ class MkInfo {
 				// cmd块 区域
 				if (block.tasks.length == 0) {
 					this.err = 2
-					this.err_msg = `Error at line ${line_num}. The task name is invalid. For example "Aa_1:" is OK. "Aa-1:" or "1A_1:" is Error.\n`
+					this.err_msg = `Error at line ${line_num}. The task name is invalid. For example "Aa1-A1_1:" is OK. "Aa1" or "1A_1:" is Error.\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
 				if (!line.match(/^\t/)) {
 					this.err = 2
-					this.err_msg = `Error at line ${line_num}. This line must start with "tab" character.\n`
+					this.err_msg = `Error at line ${line_num}. This line must start with "TAB" character or "###" .\n`
 					this.err_msg += `==>    ${line}`
 					return
 				}
@@ -399,7 +418,7 @@ class MkInfo {
 				task_max_length = 30
 			}
 			this.block_list.forEach((x, idx) => {
-				if (x.comment && x.comment.startsWith('#') && is_simple != 's') {
+				if ( is_simple != 's' && x.with_div ) {
 					let sep_line = ''
 					if (this.block_list.length < 10) sep_line += '      ---';
 					else sep_line += '      ----'
