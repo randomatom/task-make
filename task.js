@@ -21,7 +21,7 @@ Date: 2023/06/13
 task.mk 范例如下:
 -------------------------------
 __init__:
-	# 后面所有任务的执行之前会首先被调用
+	# 该模块在所有后续任务执行前调用，用于设定公共内容
 	echo "init"
 	export NDK_PATH="xxx"
 cmake:
@@ -30,6 +30,11 @@ cmake:
 	mkdir build
 	cd build
 	cmake ..
+mk_dir:
+	# workdir默认由顶层task.mk设定，使子脚本无法识别自身路径，难以引用当前目录文件
+	# 新增 MK_DIR 变量，标识mk脚本所在目录
+	python ${MK_DIR}/run.py
+
 *make:
 	# [*]代表默认任务. 当执行 m, 后面没有参数，直接执行该任务
 	cd build
@@ -1023,6 +1028,42 @@ class ArgInfo {
 		log('    -r               Run the tasks in global module.')
 		log('    -C               Compile the *.mk file into *.sh.')
 		log('    -h               Help.')
+		log(`\nExample template for task.mk script:\n
+__init__:
+	# 该模块在所有后续任务执行前调用，用于设定公共内容
+	BUILD=build
+
+build / b:
+	# 内部注释，该行不会被 -l 显示。（前面只有一个#)
+	# 上面的"/" 后面的 mp是简称，方便输入.
+	rm -rf \${BUILD}
+	mkdir \${BUILD}
+	cd \${BUILD}
+	cmake ..
+
+*make:
+	# [*]代表默认任务. 当执行 m, 后面没有参数，直接执行该任务
+	cd \${BUILD}
+	make -j8
+
+claen:
+	## 任务后面第一行开头有两个##, 该行会被 -l 显示
+	cd \${BUILD}
+	make clean
+
+MK_DIR_exam:
+	# workdir默认由顶层task.mk设定，使子脚本无法识别自身路径，难以引用当前目录文件
+	# 新增 MK_DIR 变量，标识mk脚本所在目录
+	python \${MK_DIR}/run.py
+
+#############################
+######  会显示分隔线 ########
+
+all:
+	# 可以用 m 调用其他任务
+	m build
+	m make
+`)
 		return 0
 	}
 
@@ -1342,6 +1383,8 @@ class ArgInfo {
 		}
 
 		let init_cmd = ''
+		// workdir默认由顶层task.mk设定，使子脚本无法识别自身路径，难以引用当前目录文件
+		// 新增 MK_DIR 变量，标识mk脚本所在目录
 		init_cmd += `MK_DIR=${mkfile_dir}\n`
 		if (this.task_main_dir) {
 			let init_file = this.task_main_dir + '/__init__.sh'
