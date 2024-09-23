@@ -163,14 +163,17 @@ class MkInfo {
 	constructor(file) {
 		this.file = file
 		// block_list: [block, block, ...]
-		//     block: { tasks: [name, name，...], cmd_block: '', comment: '', start_line_num: 0 }
+		//     block: { tasks: [name, name，...], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 }
 		this.block_list = []
+		// init_block:
+		//     block: { tasks: [name, name，...], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 }
+		this.init_block = null
 		// default_tasks: [name, name, ...]
 		this.default_tasks = []
-		this.init_cmd_block = ''
 		this.err = 0
 		this.err_msg = ''
 		this.parse_file()
+		// log_obj(this)
 	}
 
 	search_task(module_name, keys) {
@@ -210,9 +213,14 @@ class MkInfo {
 						break
 					}
 				}
-				else if (1 <= n && n < this.block_list.length + 1) {
-					block = this.block_list[n - 1]
-					break
+				else {
+					for (let j = 0; j < this.block_list.length; j++) {
+						let cur_block = this.block_list[j]
+						if (cur_block.task_id == n) {
+							block = cur_block
+							break
+						}
+					}
 				}
 			}
 			else {
@@ -233,6 +241,15 @@ class MkInfo {
 	}
 
 	parse_file() {
+		function push_block(thiz, block) {
+			if (block.tasks.length > 0 
+				&& (!block.tasks[0].startsWith('_') && block.tasks[0] !='__init__')) {
+				task_id++
+				block.task_id = task_id
+			}
+			thiz.block_list.push(block)
+		}
+
 		let fd = std.open(this.file, 'r')
 		if (!fd) {
 			this.err = 1
@@ -240,15 +257,15 @@ class MkInfo {
 			return 1
 		}
 
-		let null_block = { tasks: [], cmd_block: '', comment: '', start_line_num: 0 , with_div: false}
+		let null_block = { tasks: [], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 , with_div: false}
 		// 注意：要用拷贝语法，才能创建一个新的对象。直接赋值只沿用同一对象
 		let block = { ...null_block }
 		let default_flag = false
 		let line_num = 0
-
-		let line
 		let init_task_name = '__init__'
 		let on_first_line_after_taskname = false
+		let line = null
+		let task_id = 0
 		while ((line = fd.getline()) != undefined) {
 			line_num++
 			if (line.trim() == '') {
@@ -259,8 +276,12 @@ class MkInfo {
 			let m_div = line.match(/^###/)
 			if (m_div) {
 				if (block.tasks.length > 0) {
-					this.block_list.push(block)
-				} 
+					if (block.tasks[0] == '__init__') {
+						this.init_block = { ...block }
+					} else {
+						push_block(this, block)
+					}
+				}
 				block = { ...null_block }
 				block.with_div = true
 				// loge('---------')
@@ -277,7 +298,7 @@ class MkInfo {
 			let task_line_num = 0
 			if (line.includes(':')) {
 				let m0 = line.match(/^(__init__)\s*:/)
-				let m1 = line.match(/^(\*?)([A-Za-z][\w|-]*)\s*(?:\/\s*([A-Za-z][\w|-]*)\s*)?:/)
+				let m1 = line.match(/^(\*?)([A-Za-z_][\w|-]*)\s*(?:\/\s*([A-Za-z][\w|-]*)\s*)?:/)
 				//                      *      TASK      /             s             :
 				if (m0) {
 					task_line_num = line_num
@@ -291,17 +312,19 @@ class MkInfo {
 			}
 
 			if (tasks.length > 0) {
+				// 找到新的task 开头，旧的block 先保存
 				if (block.tasks[0] == init_task_name && block.cmd_block) {
-					if (this.init_cmd_block != '') {
+					if (this.init_block != null) {
 						loge(`Error: Duplication of [${init_task_name}]`)
 						this.err = 2
 					} else {
-						this.init_cmd_block = block.cmd_block
+						this.init_block = { ...block }
 						block = { ...null_block }
+						// log_obj(this.init_block)
 					}
 				} else if (block.tasks.length > 0) {
 					if (block.cmd_block) {
-						this.block_list.push(block)
+						push_block(this, block)
 						block = { ...null_block }
 					} else {
 						this.err = 2
@@ -364,7 +387,7 @@ class MkInfo {
 
 		if (block.tasks.length > 0) {
 			if (block.cmd_block) {
-				this.block_list.push(block)
+				push_block(this, block)
 				if (default_flag) {
 					this.default_tasks = block.tasks
 					default_flag = false
@@ -381,7 +404,6 @@ class MkInfo {
 		log('==> MkInfo')
 		log(`file = ${this.file} `)
 		log(`default = ${this.default_tasks} `)
-		// log(`init_block_task = ${ this.init_block_task } `)
 		log(`err = ${this.err} `)
 		this.block_list.forEach((x, idx) => {
 			log(`  task[${idx}]: ${x.task}, start_line_num: ${x.start_line_num} `)
@@ -423,6 +445,8 @@ class MkInfo {
 				task_max_length = 30
 			}
 			this.block_list.forEach((x, idx) => {
+				// log_obj(x)
+				if (x.task_id == 0)  return
 				if (list_option == '' && x.with_div) {
 					let sep_line = ''
 					if (this.block_list.length < 10) sep_line += '      ---';
@@ -442,7 +466,7 @@ class MkInfo {
 				if (this.default_tasks.length > 0 && x.tasks == this.default_tasks) line += '==>  '
 				else line += '     '
 
-				let ord = idx + 1
+				let ord = x.task_id
 				if (ord <= 9) line += ' ' + ord
 				else line += ord
 
@@ -575,7 +599,7 @@ class ArgInfo {
 		let arr = arg.split(':')
 		if (arr.length == 2 && (arr[0] != '' || arr[1] != '')) {
 			let m_file = arr[0].match(/^@\w+(\/|\w|\.|-)*$|^(\/|\w|\.|-)+$|^$/)
-			let m_task = arr[1].match(/^[A-Za-z]\w*$|^\d+$|^$/)
+			let m_task = arr[1].match(/^[A-Za-z_][\w|-]*$|^\d+$|^$/)
 			if (m_file && m_task) {
 				if (m_file[0]) this.file = m_file[0]
 				this.task = m_task[0]
@@ -588,7 +612,7 @@ class ArgInfo {
 				this.task = ''
 				ret = 0
 			} else {
-				let m_task = arr[0].match(/^[A-Za-z]\w*$|^\d+$|^$/)
+				let m_task = arr[0].match(/^[A-Za-z_][\w-]*$|^\d+$|^$/)
 				if (m_task) {
 					this.file = this.default_task_file
 					this.task = m_task[0]
@@ -942,8 +966,8 @@ class ArgInfo {
 			fd.puts(`}\n\n`)
 			return 0
 		}
-		if (info.init_cmd_block) {
-			put_task(fd, "__init__", info.init_cmd_block)
+		if (info.init_block != null) {
+			put_task(fd, "__init__", info.init_block.cmd_block)
 		}
 		for (let i = 0; i < info.block_list.length; i++) {
 			let b = info.block_list[i]
@@ -954,7 +978,7 @@ class ArgInfo {
 		}
 
 		let init_func = ''
-		if (info.init_cmd_block) {
+		if (info.init_block != null) {
 			init_func += '    __init__\n'
 		}
 
@@ -1085,7 +1109,7 @@ all:
 					loge(`create [${file}] Error!`)
 					return 1
 				}
-				fd.puts('*make:\n\t[ -f Makefile ] || [ -f makefile ] && make')
+				fd.puts('__init__:\n\t# echo \${MK_DIR}\n\n*run1 / r:\n\tpwd\n')
 				fd.close()
 				logi2(`create ${file}`)
 				let link_file = this.expand_file(this.file)
@@ -1254,7 +1278,7 @@ all:
 						let p2 = this.get_pretty_relative_path(new_wd[0], this.task_root_workdir)
 						logi(`     % Enter Dir: [ ${p2} ]`)
 					}
-					return this.run_task(info.file, block, info.init_cmd_block, this.shell_args, new_workdir, this.mkfile_dir)
+					return this.run_task(info.file, block, info.init_block, this.shell_args, new_workdir, this.mkfile_dir)
 				} else {
 					loge(`Task [${this.task}] DON'T exist!`)
 					return 1
@@ -1293,7 +1317,7 @@ all:
 		return ret
 	}
 
-	run_task(cur_file, block, init_block_task, shell_args, new_workdir, mkfile_dir) {
+	run_task(cur_file, block, init_block, shell_args, new_workdir, mkfile_dir) {
 		function crc16(s) {
 			let n = 0
 			let poly = 0xA001
@@ -1330,7 +1354,11 @@ all:
 			'OnError() {\n' +
 			'\terrcode=$?\n' +
 			'\t_ERROR_FLAG=1\n' +
-			`\t((line_num=\${1}+@2))\n` +
+			`\tif [ \${1} -ge @2 ] ; then \n` +
+			`\t    ((line_num=\${1} - @5))\n` +
+			`\telif [ \${1} -ge @1 ] ; then \n` + 
+			`\t    ((line_num=\${1} - @4))\n` +
+			`\tfi\n` +
 			// '\techo OnError @ $@, err = $errcode\n' +
 			'\t[ ${1} -lt @1 ] && exit 1\n' +
 			'\tif [ $errcode -eq 127 ]; then\n' +
@@ -1397,20 +1425,39 @@ all:
 			init_cmd += `cd "${new_workdir}"\n`
 		}
 		let comment_line = '\n##########################\n\n'
+		let init_block_cmd_block = ''
+		let init_block_start_line_num = -1
+		if (init_block != null) {
+			init_block_cmd_block = init_block.cmd_block.trimEnd()
+			init_block_start_line_num = init_block.start_line_num
+		}
+
+		block.cmd_block = block.cmd_block.trimEnd()
 		// 动态计算行号
-		let user_cmd_block = init_block_task + block.cmd_block.trimEnd()
 		let shell_cmd = trap_cmd + set_cmd + m_func_cmd + init_cmd + comment_line
-		let pre_lines_num = shell_cmd.split(/\r?\n/).length
-		let all_lines_num = pre_lines_num + user_cmd_block.split(/\r?\n/).length
-		let offset_num = block.start_line_num - pre_lines_num + 1
-		shell_cmd = shell_cmd.replaceAll('@1', pre_lines_num.toString())
-		shell_cmd = shell_cmd.replaceAll('@2', offset_num.toString())
-		shell_cmd = shell_cmd.replaceAll('@3', all_lines_num.toString())
-		shell_cmd += user_cmd_block
+		let sh_task_init_block_start = shell_cmd.split(/\r?\n/).length
+		let init_block_length = init_block_cmd_block.split(/\r?\n/).length
+		let user_block_length = block.cmd_block.split(/\r?\n/).length
+		let sh_task_user_block_start = sh_task_init_block_start + init_block_length
+		let sh_all_line_end = sh_task_init_block_start + init_block_length + user_block_length
+		let sh_init_block_offset = sh_task_init_block_start - init_block_start_line_num  - 1
+		let sh_user_block_offset = sh_task_user_block_start - block.start_line_num - 1
+		// loge(`sh_task_init_block_start = ${sh_task_init_block_start}`)
+		// loge(`init_block_length = ${init_block_length}`)
+		// loge(`sh_task_user_block_start = ${sh_task_user_block_start}`)
+		// loge(`user_block_length = ${user_block_length}`)
+		// loge(`sh_all_line_end = ${sh_all_line_end}`)
+		// loge(`sh_init_block_offset = ${sh_init_block_offset}`)
+		// loge(`sh_user_block_offset = ${sh_user_block_offset}`)
+		shell_cmd = shell_cmd.replaceAll('@1', sh_task_init_block_start.toString())
+		shell_cmd = shell_cmd.replaceAll('@2', sh_task_user_block_start.toString())
+		shell_cmd = shell_cmd.replaceAll('@3', sh_all_line_end.toString())
+		shell_cmd = shell_cmd.replaceAll('@4', sh_init_block_offset.toString())
+		shell_cmd = shell_cmd.replaceAll('@5', sh_user_block_offset.toString())
+		shell_cmd += init_block_cmd_block + '\n' + block.cmd_block
 
 		let tag = crc16(shell_cmd)
 		let tmp_dir = this.tmp_dir
-		// log_obj(block)
 		let shell_name = `${tmp_dir}/${block.tasks[0]}_${tag}.sh`
 		// logd(`${shell_name}`)
 
