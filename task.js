@@ -391,7 +391,7 @@ class MkInfo {
 		}
 	}
 
-	print_task(is_simple) {
+	print_task(list_option) {
 		function cal_task_str_len(arr) {
 			let len = 0
 			for (let i = 0; i < arr.length; i++) {
@@ -400,7 +400,7 @@ class MkInfo {
 			if (arr.length >= 1) len -= 3
 			return len
 		}
-		if (is_simple == 's') {
+		if (list_option == 's') {
 			this.block_list.forEach((x, idx) => {
 				let line = `${x.tasks[0]}`
 				log(line)
@@ -418,7 +418,7 @@ class MkInfo {
 				task_max_length = 30
 			}
 			this.block_list.forEach((x, idx) => {
-				if ( is_simple != 's' && x.with_div ) {
+				if (list_option == '' && x.with_div) {
 					let sep_line = ''
 					if (this.block_list.length < 10) sep_line += '      ---';
 					else sep_line += '      ----'
@@ -448,7 +448,7 @@ class MkInfo {
 					line += ` / ${x.tasks[i]}`
 				}
 
-				if (x.comment && is_simple != 's') {
+				if (x.comment && list_option == '') {
 					let cur_length = line.length
 					let length2 = length1 + task_max_length + 12
 					if (cur_length < length2) {
@@ -484,6 +484,7 @@ class ArgInfo {
 			this.task_root_workdir = os.getcwd()[0]
 		}
 		this.change_workdir = false
+		this.mkfile_dir = ''
 		this.default_task_file = std.getenv('_TASK_CUR_DEFAULT_FILE')
 		if (!this.default_task_file) this.default_task_file = 'task.mk'
 		this.is_subtask = false
@@ -594,6 +595,12 @@ class ArgInfo {
 		}
 		if (ret != 0) {
 			loge(`Task [${arg}] Illegal format!`)
+			if (arg.endsWith('.mk')) {
+				let f_st = os.lstat(arg)
+				if (f_st[1] == 0 && (f_st[0].mode & os.S_IFREG)) {
+					loge(`    Do you mean "${arg}:"?`)
+				}
+			}
 		}
 		return ret
 	}
@@ -604,9 +611,9 @@ class ArgInfo {
 			switch (arg[1]) {
 				case 'l':
 					this.action = 'list'
-					if (arg.length > 2 && arg[2] == 's') {
+					if (arg.length > 2 && 'sc'.includes(arg[2])) {
 						// simple mode
-						this.list_option = 's'
+						this.list_option = argv[2]
 					}
 					break
 				case 'e':
@@ -714,6 +721,17 @@ class ArgInfo {
 		}
 	}
 
+	get_absolute_dir(path) {
+		let p1 = this.get_base_dir(path)
+		if (p1 == "") {
+			return os.getcwd()[0]
+		} else {
+			let p2 = os.realpath(p1)
+			if (p2[1] == 0) return p2[0];
+			else return ""
+		}
+	}
+
 	get_pretty_relative_path(path, base_dir) {
 		let short_path = path
 		if (path.indexOf(base_dir) == 0) {
@@ -728,7 +746,7 @@ class ArgInfo {
 		return short_path
 	}
 
-	print_repo(sub_dir, is_simple) {
+	print_repo(sub_dir, list_option) {
 		function read_dir_mks(dir_name) {
 			let mk_list = []
 			let dir_list = []
@@ -762,7 +780,7 @@ class ArgInfo {
 			return
 		}
 
-		if (is_simple == 's') {
+		if (list_option == 's') {
 			repo_list[0].forEach((x, _) => {
 				log(`${sub_dir}${x}`)
 			})
@@ -1166,6 +1184,7 @@ class ArgInfo {
 
 			let new_workdir = ''
 			if (this.change_workdir) new_workdir = this.get_base_dir(this.file)
+			this.mkfile_dir = this.get_absolute_dir(this.file)
 			let cur_wd = os.getcwd()
 			let new_wd = os.realpath(new_workdir)
 
@@ -1194,7 +1213,7 @@ class ArgInfo {
 						let p2 = this.get_pretty_relative_path(new_wd[0], this.task_root_workdir)
 						logi(`     % Enter Dir: [ ${p2} ]`)
 					}
-					return this.run_task(info.file, block, info.init_cmd_block, this.shell_args, new_workdir)
+					return this.run_task(info.file, block, info.init_cmd_block, this.shell_args, new_workdir, this.mkfile_dir)
 				} else {
 					loge(`Task [${this.task}] DON'T exist!`)
 					return 1
@@ -1233,7 +1252,7 @@ class ArgInfo {
 		return ret
 	}
 
-	run_task(cur_file, block, init_block_task, shell_args, new_workdir) {
+	run_task(cur_file, block, init_block_task, shell_args, new_workdir, mkfile_dir) {
 		function crc16(s) {
 			let n = 0
 			let poly = 0xA001
@@ -1323,10 +1342,11 @@ class ArgInfo {
 		}
 
 		let init_cmd = ''
+		init_cmd += `MK_DIR=${mkfile_dir}\n`
 		if (this.task_main_dir) {
 			let init_file = this.task_main_dir + '/__init__.sh'
 			if (os.lstat(init_file)[1] == 0) {
-				init_cmd = `. ${init_file}\n`
+				init_cmd += `. ${init_file}\n`
 			}
 		}
 		if (new_workdir) {
