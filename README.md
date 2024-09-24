@@ -21,7 +21,7 @@
 ## 概述
 日常开发或运维往往有很多繁琐的步骤和流程，需要执行一系列复杂的指令。  
 对于需要多次重复执行的场合，每次都依赖人工重新输入执行，不仅效率低下, 又容易出错。  
-将日常的命令组合，提取公共部分抽象成 task，进行复用，既减少工作量，也能减少出错概率。  
+将日常的命令组合，提取公共部分抽象成 task，进行复用，不仅减少工作量，还能显著减少出错概率。  
 如何更好管理这些命令组合（task），有几种方案。
 
 ### 旧方案
@@ -83,45 +83,44 @@ https://github.com/randomatom/task-make/assets/6417202/0f2b24da-1f8c-41f5-9b85-b
 3. 以 # 开头的行，为注释行，不会被执行
 4. 在目标行之后以 ## 开头的第一行，作为对该目标的注释，会被显示
 5. `__init__` 目标在正常目标执行之前，会被首先执行。
+6. `${MK_DIR}`: 环境变量, 标识mk脚本所在目录。用于跨脚本调用mk文件，告知子脚本自身目录。
 
 `task.mk`范例如下
 ```makefile
 __init__:
-	# 所有命令的执行之前会首先被调用
-	echo "init"
-	export NDK_PATH="xxx"
-cmake:
+	# 该模块在所有后续任务执行前调用，用于设定公共内容
+	BUILD=build
+
+build / b:
 	# 内部注释，该行不会被 -l 显示。（前面只有一个#)
-	rm -rf build
-	mkdir build
-	cd build
+	# 上面的"/" 后面的 mp是简称，方便输入.
+	rm -rf \${BUILD}
+	mkdir \${BUILD}
+	cd \${BUILD}
 	cmake ..
+
 *make:
-	## [*]代表默认命令. 当执行 m, 后面没有参数，直接执行该目标
-	cd build
+	# [*]代表默认任务. 当执行 m, 后面没有参数，直接执行该任务
+	cd \${BUILD}
 	make -j8
-install:
-	cd build
-	make install
+
 claen:
-	## 目标后面第一行开头有两个##, 该行会被 -l 显示
-	cd build
+	## 任务后面第一行开头有两个##, 该行会被 -l 显示
+	cd \${BUILD}
 	make clean
-make_and_push / mp:
-	## 上面的"/" 后面的 mp是简称，方便输入.
-	cd build
-	make -j8
-	adb push test /data/app/test
-test:
-	### 三个#表示增加分隔线
-	for f in $(find . -name "*.mk") ; do
-		cat $f
-	done
+
+MK_DIR_exam:
+	# workdir默认由顶层task.mk设定，使子脚本无法识别自身路径，难以引用当前目录文件
+	# 新增 MK_DIR 变量，标识mk脚本所在目录
+	python \${MK_DIR}/run.py
+
+#############################
+######  会显示分隔线 ########
+
 all:
-	# 可以用 m 调用其他命令
-	m cmake
+	# 可以用 m 调用其他任务
+	m build
 	m make
-	m install
 ```
 
 #### 仓库目录结构
@@ -137,8 +136,8 @@ all:
     └── test.mk
 ```
 
-1. __init__.sh: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
-2. run_file_list.txt: 本机运行过的所有 *.mk 文件的列表，方便回顾
+1. `__init__.sh`: 可以将公共的函数放在这里，本用户运行的 *.mk 都能复用
+2. `run_file_list.txt`: 本机运行过的所有 *.mk 文件的列表，方便回顾
 3. repo: 全局模块的存放目录
 
 
@@ -163,7 +162,6 @@ qjs /usr/local/bin/task.js "$@"
 ```
 ./install.sh
 ```
-
 ## 使用方式
 
 ### 本地task.mk
@@ -174,21 +172,19 @@ qjs /usr/local/bin/task.js "$@"
 ```
 $ m -l
 Select a Task:
-       1. cmake
-  ==>  2. make                  # [*]代表默认命令. 当执行 m, 后面没有参数，直接执行该目标
-       3. install
-       4. claen                 # 目标后面第一行开头有两个##, 该行会被显示
-       5. make_and_push / mp    # 上面的"/"后面的mp是简称，方便输入
-      --------------------
-       6. test                  # 三个#表示增加分隔线
-       7. all
+      1. build / b
+==>   2. make                 # [*]代表默认任务. 当执行 m, 后面没有参数，直接执行该任务
+      3. claen                # 任务后面第一行开头有两个##, 该行会被 -l 显示
+      4. MK_DIR_exam
+      --------------
+      5. all
 ```
 
 2. 执行目标。有三者方式，效果一样。
 ```
-$ m make_and_push  # 全名
-$ m mp             # 简称
-$ m 5              # 序号
+$ m build  # 全名
+$ m b      # 简称
+$ m 1      # 序号
 ```
 
 3. 执行默认目标
@@ -247,7 +243,7 @@ $ m @linux:sensor
 $ m @linux:3
 ```
 
-4. 新建 new_mod.mk
+4. 新建 `new_mod.mk`
 
 ```
 $ m -c @new_mod

@@ -52,7 +52,6 @@ make_and_push / mp:
 	make -j8
 	adb push test /data/app/test
 test:
-	### 三个#表示增加分隔线
 	for f in `ls *.mk` ; do
 		cat $f
 	done
