@@ -52,6 +52,7 @@ make_and_push / mp:
 	make -j8
 	adb push test /data/app/test
 test:
+	### 三个#表示增加分隔线
 	for f in `ls *.mk` ; do
 		cat $f
 	done
@@ -169,6 +170,10 @@ class MkInfo {
 		this.init_block = null
 		// default_tasks: [name, name, ...]
 		this.default_tasks = []
+		// module_list: [module, module, ...]
+		//     module: { file: '', alias: ''}
+		this.module_list_global = []
+		this.module_list_local = []
 		this.err = 0
 		this.err_msg = ''
 		this.parse_file()
@@ -239,164 +244,155 @@ class MkInfo {
 		return block
 	}
 
-	parse_file() {
-		function push_block(thiz, block) {
-			if (block.tasks.length > 0 
-				&& (!block.tasks[0].startsWith('_') && block.tasks[0] !='__init__')) {
-				task_id++
-				block.task_id = task_id
-			}
-			thiz.block_list.push(block)
-		}
-
+	parse_lines_info() {
 		let fd = std.open(this.file, 'r')
 		if (!fd) {
 			this.err = 1
 			this.err_msg = `${this.file} DON'T exist!`
-			return 1
+			return null
 		}
-
-		let null_block = { tasks: [], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 , with_div: false}
-		// 注意：要用拷贝语法，才能创建一个新的对象。直接赋值只沿用同一对象
-		let block = { ...null_block }
-		let default_flag = false
+		let lines = []
+		let line
 		let line_num = 0
-		let init_task_name = '__init__'
-		let on_first_line_after_taskname = false
-		let line = null
-		let task_id = 0
 		while ((line = fd.getline()) != undefined) {
+			line = line.trimEnd()
+			let type = ''
+			let tasks = []
+			let param = []
+			let default_flag = false
 			line_num++
 			if (line.trim() == '') {
-				if (block.tasks.length == 0) continue
-				else line = '\t'
-			}
-
-			let m_div = line.match(/^###/)
-			if (m_div) {
-				if (block.tasks.length > 0) {
-					if (block.tasks[0] == '__init__') {
-						this.init_block = { ...block }
-					} else {
-						push_block(this, block)
-					}
-				}
-				block = { ...null_block }
-				block.with_div = true
-				// loge('---------')
 				continue
-			}
-
-			let m_comment = line.match(/^#/)
-			if (m_comment) {
-				continue
-			}
-
-			// logd('+ ' + line)
-			let tasks = []
-			let task_line_num = 0
-			if (line.includes(':')) {
-				let m0 = line.match(/^(__init__)\s*:/)
-				let m1 = line.match(/^(\*?)([A-Za-z_][\w|-]*)\s*(?:\/\s*([A-Za-z][\w|-]*)\s*)?:/)
-				//                      *      TASK      /             s             :
+			} else if (line.startsWith('###')){
+				type = 'div'
+			} else if (line.startsWith('#!')){
+				type = 'pre_cmd'
+				let m0 = line.match(/^#!\s+import\s+([\/|\w|\.|-]*)(\s+as\s+(\w*))*\s*$/)
 				if (m0) {
-					task_line_num = line_num
-					tasks = [init_task_name]
+					param = ['import', m0[1], m0[3]]
+				} else {
+					this.err = 2
+					this.err_msg = `Error at line ${line_num}. pre_cmd Error.\n`
+					this.err_msg += `==>    ${line}`
+					return null
+				}
+			} else if (line.startsWith('#')) {
+				continue
+			} else if (line.endsWith(':')) {
+				let m0 = line.match(/^(__init__)\s*:/)
+				let m1 = line.match(/^(\*?)(_?[A-Za-z][\w|-]*)\s*(?:\/\s*([A-Za-z][\w|-]*)\s*)?:/)
+				//                      *          TASK              /             s           :
+				if (m0) {
+					type = 'task'
+					tasks = ['__init__']
 				} else if (m1) {
-					task_line_num = line_num
-					default_flag = m1[1] == '*'
-					tasks = [m1[2]]
-					if (m1[3]) tasks.push(m1[3])
-				}
-			}
-
-			if (tasks.length > 0) {
-				// 找到新的task 开头，旧的block 先保存
-				if (block.tasks[0] == init_task_name && block.cmd_block) {
-					if (this.init_block != null) {
-						loge(`Error: Duplication of [${init_task_name}]`)
-						this.err = 2
-					} else {
-						this.init_block = { ...block }
-						block = { ...null_block }
-						// log_obj(this.init_block)
-					}
-				} else if (block.tasks.length > 0) {
-					if (block.cmd_block) {
-						push_block(this, block)
-						block = { ...null_block }
-					} else {
-						this.err = 2
-						this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command.\n`
-						return
-					}
-				}
-
-				if (this.find_task_block(tasks)) {
+					type = 'task'
+					default_flag = (m1[1] == '*')
+					tasks = m1.slice(2).filter(x => x != null)
+				} else {
 					this.err = 2
-					this.err_msg = `Error at line ${line_num}. Duplication of task [${tasks}].\n`
+					this.err_msg = `Error at line ${line_num}. The task name is invalid. For example "Aa1-A1_1" or "_abc" is OK. "1a1" or "__abc" is Error.\n`
 					this.err_msg += `==>    ${line}`
-					return
+					return null
 				}
-
-				if (default_flag) {
-					if (this.default_tasks.length > 0) {
-						this.err = 2
-						this.err_msg = `Error at line ${line_num}. Duplication of default task [${tasks[0]}].\n`
-						this.err_msg += `==>    ${line}`
-						return
-					} else {
-						this.default_tasks = tasks
-						default_flag = false
-					}
-				}
-				block.tasks = tasks
-				block.start_line_num = task_line_num
-				on_first_line_after_taskname = true
-			} else {
-				// cmd块 区域
-				if (block.tasks.length == 0) {
-					this.err = 2
-					this.err_msg = `Error at line ${line_num}. The task name is invalid. For example "Aa1-A1_1:" is OK. "Aa1" or "1A_1:" is Error.\n`
-					this.err_msg += `==>    ${line}`
-					return
-				}
-				if (!line.match(/^\t/)) {
-					this.err = 2
-					this.err_msg = `Error at line ${line_num}. This line must start with "TAB" character or "###" .\n`
-					this.err_msg += `==>    ${line}`
-					return
-				}
-				if (on_first_line_after_taskname) {
-					// 当注释以 ## 开头，将提取并显示
-					if (line.trim().startsWith('##')) {
-						block.comment = line.trim().substring(2)
-					}
-					on_first_line_after_taskname = false
-				}
-				block.cmd_block += line.slice(1) + '\n'
-			}
-		}
-
-		if (block.tasks.length > 0 && this.find_task_block(block.tasks)) {
-			this.err = 2
-			this.err_msg = `Error at line ${line_num}. Duplication of task [${block[0]}].\n`
-			return
-		}
-
-		if (block.tasks.length > 0) {
-			if (block.cmd_block) {
-				push_block(this, block)
-				if (default_flag) {
-					this.default_tasks = block.tasks
-					default_flag = false
-				}
+			} else if (line.startsWith('\t')) {
+				type = 'code'
+				line = line.substring(1)
 			} else {
 				this.err = 2
-				this.err_msg = `Error at line ${line_num}. Task [${block.tasks[0]}] have NO command.\n`
-				return
+				this.err_msg = `Error at line ${line_num}.\n`
+				this.err_msg += `==>    ${line}`
+				return null
 			}
+			let line_info = {num: line_num, str:line, type:type, param:param, tasks:tasks, default_flag:default_flag}
+			lines.push(line_info)
 		}
+		return lines
+	}
+
+	parse_file() {
+		function lines_into_group(lines) {
+			let block_group = []
+			let type_list = lines.map(x => x.type[0]).join('')
+			let block_start = 0
+			while (1) {
+				let m = type_list.match(/^d*tc*/)
+				if (m) {
+					let block_len = m[0].length
+					let line_block = lines.slice(block_start, block_start + block_len)
+					block_start += block_len
+					block_group.push(line_block)
+					type_list = type_list.slice(block_len)
+					if (type_list.length == 0) break
+				} else {
+					return null
+				}
+			}
+			return block_group
+		}
+
+		let lines = this.parse_lines_info()
+		if (lines == null) {
+			return 1
+		}
+		let thiz = this
+		let pre_cmd_list = lines.filter(x => x.type == 'pre_cmd')
+		pre_cmd_list.forEach(pre_cmd => {
+			log_obj(pre_cmd)
+			thiz.module_list_local.push({file: pre_cmd.param[1], alias: pre_cmd.param[2]})
+		})
+		lines = lines.filter(x => x.type != 'pre_cmd')
+		let raw_task_block_list = lines_into_group(lines)
+		let task_id = 1
+		let last_line_num = 0
+		raw_task_block_list.forEach(raw_task_block => {
+			let block = { tasks: [], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 , with_div: false}
+			raw_task_block.forEach(line => {
+				if (line.type == 'task') {
+					block.tasks = line.tasks
+					if (line.default_flag) {
+						if (thiz.default_tasks.length > 0) {
+							thiz.err = 2
+							thiz.err_msg = `Error at line ${line.num}: Duplication of default task.\n`
+							this.err_msg += `==>    ${line.str}`
+							return 1
+						}
+						thiz.default_tasks = line.tasks
+					}
+					if (line.tasks[0] != '__init__' && !line.tasks[0].startsWith('_')) {
+						block.task_id = task_id
+						task_id ++
+					}
+					if (thiz.find_task_block(line.tasks)) {
+						thiz.err = 2
+						thiz.err_msg = `Error at line ${line.num}. Duplication of task [${line.tasks}].\n`
+						this.err_msg += `==>    ${line.str}`
+						return 1
+					}
+					block.start_line_num = line.num
+				} else if (line.type == 'code') {
+					block.cmd_block += '\n'.repeat(line.num - last_line_num) + line.str
+					if (line.str.trim().startsWith('##')) {
+						block.comment += line.str.trim().substring(2)
+					}
+				} else if (line.type == 'div') {
+					block.with_div = true
+				}
+				last_line_num = line.num
+			}); 
+			block.cmd_block = block.cmd_block.trim()
+			if (block.tasks[0] == '__init__') {
+				if (thiz.init_block != null) {
+					thiz.err = 2
+					thiz.err_msg = `Error: Duplication of task [__int__].\n`
+					return 2
+				}
+				thiz.init_block = block
+			} else {
+				thiz.block_list.push(block)
+			}
+		});
+		// log_obj(this.block_list)
 	}
 
 	print() {
@@ -641,7 +637,7 @@ class ArgInfo {
 					this.action = 'list'
 					if (arg.length > 2 && 'sc'.includes(arg[2])) {
 						// simple mode
-						this.list_option = argv[2]
+						this.list_option = arg[2]
 					}
 					break
 				case 'e':
