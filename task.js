@@ -170,10 +170,6 @@ class MkInfo {
 		this.init_block = null
 		// default_tasks: [name, name, ...]
 		this.default_tasks = []
-		// module_list: [module, module, ...]
-		//     module: { file: '', alias: ''}
-		this.module_list_global = []
-		this.module_list_local = []
 		this.err = 0
 		this.err_msg = ''
 		this.parse_file()
@@ -316,6 +312,7 @@ class MkInfo {
 			let type_list = lines.map(x => x.type[0]).join('')
 			let block_start = 0
 			while (1) {
+				// d:div t:task c:code
 				let m = type_list.match(/^d*tc*/)
 				if (m) {
 					let block_len = m[0].length
@@ -335,14 +332,10 @@ class MkInfo {
 		if (lines == null) {
 			return 1
 		}
-		let thiz = this
-		let pre_cmd_list = lines.filter(x => x.type == 'pre_cmd')
-		pre_cmd_list.forEach(pre_cmd => {
-			log_obj(pre_cmd)
-			thiz.module_list_local.push({file: pre_cmd.param[1], alias: pre_cmd.param[2]})
-		})
+		let pre_cmd = lines.filter(x => x.type == 'pre_cmd')
 		lines = lines.filter(x => x.type != 'pre_cmd')
 		let raw_task_block_list = lines_into_group(lines)
+		let thiz = this
 		let task_id = 1
 		let last_line_num = 0
 		raw_task_block_list.forEach(raw_task_block => {
@@ -441,7 +434,6 @@ class MkInfo {
 			}
 			this.block_list.forEach((x, idx) => {
 				// log_obj(x)
-				if (x.task_id == 0)  return
 				if (list_option == '' && x.with_div) {
 					let sep_line = ''
 					if (this.block_list.length < 10) sep_line += '      ---';
@@ -456,6 +448,8 @@ class MkInfo {
 					}
 					x.comment = x.comment.slice(start_new)
 				}
+
+				if (x.task_id == 0) return
 
 				let line = ''
 				if (this.default_tasks.length > 0 && x.tasks == this.default_tasks) line += '==>  '
