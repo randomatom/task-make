@@ -702,7 +702,6 @@ class ArgInfo {
 				break
 			}
 		}
-
 		if (i < args.length) {
 			if (this.action == 'list' || this.action == 'default') {
 				if (this.parse_file_and_task(args[i]) == 0) {
@@ -938,6 +937,7 @@ class ArgInfo {
 		function put_task(fd, task_name, cmd_block) {
 			fd.puts(`${task_name}() {\n`)
 			let cmd_arr = cmd_block.split('\n')
+			let empty = true
 			for (let i = 0; i < cmd_arr.length; i++) {
 				let x = cmd_arr[i]
 				if (x.trim()) {
@@ -949,8 +949,15 @@ class ArgInfo {
 						}
 						x = `run_task "do_${x.slice(2)}"`
 					}
+					if (!x.startsWith('#')) {
+						empty = false
+					}
 					fd.puts(`	${x}\n`)
 				}
+			}
+			if (empty) {
+				// bash 函数必须有内容，否则会报错
+				fd.puts(`    __fill_blank=1\n`)
 			}
 			fd.puts(`}\n\n`)
 			return 0
@@ -973,6 +980,7 @@ class ArgInfo {
 
 		fd.puts(`task_list=(\n`)
 		task_list.forEach((x, _) => {
+			if (x.startsWith('_')) return
 			fd.puts(`	${x}\n`)
 		})
 		fd.puts(')\n\n')
@@ -1294,8 +1302,8 @@ all:
 		} else if (this.action == 'list') {
 			ret = this.do_list()
 		} else if (this.action == 'compile') {
-			this.file = 'task.mk'
-			this.compile_bash_file = 'task.sh'
+			if (this.file == '') this.file = 'task.mk'
+			if (this.compile_bash_file == '') this.compile_bash_file = 'task.sh'
 			ret = this.do_compile()
 		} else if (this.action == 'default') {
 			ret = this.do_default()
