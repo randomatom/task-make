@@ -1410,7 +1410,7 @@ all:
 		let init_cmd = ''
 		// workdir默认由顶层task.mk设定，使子脚本无法识别自身路径，难以引用当前目录文件
 		// 新增 MK_DIR 变量，标识mk脚本所在目录
-		init_cmd += `MK_DIR=${mkfile_dir}\n`
+		init_cmd += `MK_DIR="${mkfile_dir}"\n`
 		if (this.task_main_dir) {
 			let init_file = this.task_main_dir + '/__init__.sh'
 			if (os.lstat(init_file)[1] == 0) {
