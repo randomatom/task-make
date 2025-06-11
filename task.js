@@ -372,7 +372,7 @@ class MkInfo {
 					block.with_div = true
 				}
 				last_line_num = line.num
-			}); 
+			});
 			block.cmd_block = block.cmd_block.trim()
 			if (block.tasks[0] == '__init__') {
 				if (thiz.init_block != null) {
@@ -494,6 +494,7 @@ class ArgInfo {
 		this.search_option = ''
 		this.search_key_works = []
 		this.shell_args = []
+		this.incomplete_text = ''
 		this.task_main_dir = task_main_dir
 		this.task_repo_dir = task_main_dir + '/repo'
 		this.task_root_workdir = std.getenv('_TASK_ROOT_WORKDIR')
@@ -652,6 +653,9 @@ class ArgInfo {
 				case 'C':
 					this.action = 'compile'
 					break
+				case 't':
+					this.action = 'tab_complete'
+					break
 				case 'h':
 					this.action = 'help'
 					break
@@ -711,6 +715,8 @@ class ArgInfo {
 				}
 			} else if (this.action == 'create') {
 				this.file = args[i]
+			} else if (this.action == 'tab_complete') {
+				this.incomplete_text = args[i]
 			} else if (this.action == 'edit') {
 				this.parse_file_and_task(args[i])
 			} else if (this.action == 'search' || this.action == 'run') {
@@ -763,35 +769,36 @@ class ArgInfo {
 		return short_path
 	}
 
-	print_repo(sub_dir, list_option) {
-		function read_dir_mks(dir_name) {
-			let mk_list = []
-			let dir_list = []
-			let dirs_st = os.readdir(dir_name)
-			if (dirs_st[1] == 0) {
-				dirs_st[0].sort()
-				dirs_st[0].forEach((x, _) => {
-					let f_st = os.lstat(dir_name + '/' + x)
-					if (f_st[1] == 0) {
-						if (f_st[0].mode & os.S_IFDIR && !x.startsWith('.')) {
-							dir_list.push(x)
-						} else if (x.endsWith('.mk') && !x.startsWith('.')) {
-							x = x.replace('.mk', '')
-							mk_list.push(x)
-						}
+	read_dir_mks(dir_name) {
+		let mk_list = []
+		let dir_list = []
+		let dirs_st = os.readdir(dir_name)
+		if (dirs_st[1] == 0) {
+			dirs_st[0].sort()
+			dirs_st[0].forEach((x, _) => {
+				let f_st = os.lstat(dir_name + '/' + x)
+				if (f_st[1] == 0) {
+					if (f_st[0].mode & os.S_IFDIR && !x.startsWith('.')) {
+						dir_list.push(x)
+					} else if (x.endsWith('.mk') && !x.startsWith('.')) {
+						x = x.replace('.mk', '')
+						mk_list.push(x)
 					}
-				})
-			} else {
-				return null
-			}
-			return [mk_list, dir_list]
+				}
+			})
+		} else {
+			return null
 		}
+		return [mk_list, dir_list]
+	}
+
+	print_repo(sub_dir, list_option) {
 		if (!sub_dir.match(/^@$|^@.+\/$/)) {
 			loge(`error: ${sub_dir}`)
 			return
 		}
 		let real_dir = `${this.task_main_dir}/repo/${sub_dir.slice(1)}`
-		let repo_list = read_dir_mks(real_dir)
+		let repo_list = this.read_dir_mks(real_dir)
 		if (!repo_list) {
 			loge(`Module Path [${sub_dir}] error!`)
 			return
@@ -1228,6 +1235,114 @@ all:
 		return 0
 	}
 
+	// 这个模块是作为bash里补全功能,采用渐进式补全
+	do_tab_complete() {
+		let complete_task_list = []
+		let complete_mk_list = []
+		let complete_path_list = []
+		let file = this.expand_file(this.file)
+		if (file.endsWith('.mk')) {
+			let info = new MkInfo(file)
+			if (info.err == 0) {
+				info.block_list.forEach((x, idx) => {
+					if (!x.tasks[0].startsWith('_')) {
+						complete_task_list.push(`${x.tasks[0]}`)
+					}
+				})
+			}
+		}
+		let real_dir = `${this.task_main_dir}/repo`
+		let module_names = this.read_dir_mks(real_dir)
+		if (module_names != null) {
+			module_names[0].forEach((x, _) => {
+				complete_mk_list.push(`@${x}:`)
+			})
+		}
+		let cur_dir_mks = this.read_dir_mks(os.getcwd()[0])
+		if (cur_dir_mks != null) {
+			cur_dir_mks[0].forEach((x, _) => {
+				if (x != 'task') {
+					complete_mk_list.push(`${x}.mk:`)
+				}
+			})
+			cur_dir_mks[1].forEach((x, _) => {
+				complete_path_list.push(`${x}/`)
+			})
+		}
+
+		// 当输入的字符为空时，列出当前 task.mk 里所有模块，以及当前目录的下*.mk文件，以及目录
+		if (this.incomplete_text == '') {
+			let all_list = complete_task_list.concat(complete_mk_list).concat(complete_path_list)
+			// all_list.forEach((x, _) => log(x.replace(':', '\\:')))
+			all_list.forEach((x, _) => log(x))
+		} else {    // 当输入的字符不为空时，渐进式补全。
+			// 补全 默认 task模块
+			complete_task_list.forEach((x, _) => {
+				if (x == this.incomplete_text) {
+				} else if (x.startsWith(this.incomplete_text)) {
+					log(x)
+				} else if (this.incomplete_text.startsWith(x)) {
+				}
+			})
+			// 补全 *.mk 文件
+			complete_mk_list.forEach((x, _) => {
+				if (x == this.incomplete_text) {
+					let info = new MkInfo(this.expand_file(x.slice(0, -1)))
+					if (info.err == 0) {
+						x = x.replace(':', '\\:')
+						info.block_list.forEach((y, _) => {
+							log(`${x}${y.tasks[0]}`)
+						})
+					}
+				} else if (x.startsWith(this.incomplete_text)) {
+					log(x)
+				} else if (this.incomplete_text.startsWith(x)) {
+					let info = new MkInfo(this.expand_file(x.slice(0, -1)))
+					if (info.err == 0) {
+						x = x.replace(':', '\\:')
+						let part_task = this.incomplete_text.split(':')[1]
+						info.block_list.forEach((y, _) => {
+							if (y.tasks[0].startsWith(part_task)) {
+								log(`${x}${y.tasks[0]}`)
+							}
+						})
+					}
+				}
+			})
+			// 补全路径
+			complete_path_list.forEach((p, _) => {
+				if (p == this.incomplete_text) {
+					let cur_dir_mks = this.read_dir_mks(os.getcwd()[0] + '/' + p)
+					if (cur_dir_mks != null) {
+						cur_dir_mks[0].forEach((x, _) => {
+							log(`${p}${x}.mk\\:`)
+						})
+						cur_dir_mks[1].forEach((x, _) => {
+							log(`${p}${x}/`)
+						})
+					}
+				} else if (p.startsWith(this.incomplete_text)) {
+					log(p)
+				} else if (this.incomplete_text.startsWith(p)) {
+					let lastSlashIndex = this.incomplete_text.lastIndexOf('/')
+					if (lastSlashIndex == -1) return 0
+					let base_path = this.incomplete_text.slice(0, lastSlashIndex + 1)
+					let cur_dir_mks = this.read_dir_mks(os.getcwd()[0] + '/' + base_path)
+					log_obj(cur_dir_mks)
+					if (cur_dir_mks != null) {
+						cur_dir_mks[0].forEach((x, _) => {
+							log(`${base_path}${x}.mk\\:`)
+						})
+						cur_dir_mks[1].forEach((x, _) => {
+							log(`${base_path}${x}/`)
+						})
+					}
+				}
+			})
+		}
+		return 0
+	}
+
 	do_default() {
 		// 没有 -l/-c 等参数
 		if (this.file == '@' || this.file.endsWith('/')) {
@@ -1305,6 +1420,8 @@ all:
 			if (this.file == '') this.file = 'task.mk'
 			if (this.compile_bash_file == '') this.compile_bash_file = 'task.sh'
 			ret = this.do_compile()
+		} else if (this.action == 'tab_complete') {
+			ret = this.do_tab_complete()
 		} else if (this.action == 'default') {
 			ret = this.do_default()
 		} else {
@@ -1353,7 +1470,7 @@ all:
 			'\t_ERROR_FLAG=1\n' +
 			`\tif [ \${1} -ge @2 ] ; then \n` +
 			`\t    ((line_num=\${1} - @5))\n` +
-			`\telif [ \${1} -ge @1 ] ; then \n` + 
+			`\telif [ \${1} -ge @1 ] ; then \n` +
 			`\t    ((line_num=\${1} - @4))\n` +
 			`\tfi\n` +
 			// '\techo OnError @ $@, err = $errcode\n' +
