@@ -267,24 +267,42 @@ class MkInfo {
 				if (m0) {
 					param = ['import', m0[1], m0[3]]
 				} else {
-					this.err = 2
-					this.err_msg = `Error at line ${line_num}. pre_cmd Error.\n`
-					this.err_msg += `==>    ${line}`
-					return null
+					let m1 = line.match(/^#!\s*(\w+)\s*$/)
+					if (m1) {
+						param = ['interpreter', m1[1]]
+					} else {
+						this.err = 2
+						this.err_msg = `Error at line ${line_num}. pre_cmd Error.\n`
+						this.err_msg += `==>    ${line}`
+						return null
+					}
 				}
 			} else if (line.startsWith('#')) {
 				continue
-			} else if (line.endsWith(':')) {
+			} else if (line.endsWith(':') || line.match(/:(?:\s+#!.+)$/)) {
 				let m0 = line.match(/^(__init__)\s*:/)
-				let m1 = line.match(/^(\*?)(_?[A-Za-z][\w|-]*)\s*(?:\/\s*([A-Za-z][\w|-]*)\s*)?:/)
-				//                      *          TASK              /             s           :
+				let task_regex = new RegExp(
+					'^' +                                   // 行首
+					'(\\*?)' +                              // * 默认任务标记
+					'(_?[A-Za-z][\\w|-]*)' +                // 主任务名
+					'(?:\\/\\s*([A-Za-z][\\w|-]*)\\s*)?' +  // / 别名
+					':' +                                   // 冒号分隔符
+					'(?:\\s+#!(.+))?' +                     // #!/path/to/interpreter
+					'$'                                     // 行尾
+				)
+				let m1 = line.match(task_regex)
 				if (m0) {
 					type = 'task'
 					tasks = ['__init__']
 				} else if (m1) {
 					type = 'task'
 					default_flag = (m1[1] == '*')
-					tasks = m1.slice(2).filter(x => x != null)
+					tasks = m1.slice(2, 4).filter(x => x != null)
+					if (m1[4]) {
+						let interpreter_path = m1[4].trim()
+						let interpreter_name = interpreter_path.split('/').pop()
+						param = ['interpreter', interpreter_name]
+					}
 				} else {
 					this.err = 2
 					this.err_msg = `Error at line ${line_num}. The task name is invalid. For example "Aa1-A1_1" or "_abc" is OK. "1a1" or "__abc" is Error.\n`
@@ -332,14 +350,23 @@ class MkInfo {
 		if (lines == null) {
 			return 1
 		}
-		let pre_cmd = lines.filter(x => x.type == 'pre_cmd')
+		let interpreter_map = {}
+		lines.forEach(line => {
+			if (line.type == 'task' && line.param[0] === 'interpreter') {
+				let task_name = line.tasks[0]
+				if (task_name) {
+					interpreter_map[task_name] = line.param[1]
+				}
+			}
+		})
 		lines = lines.filter(x => x.type != 'pre_cmd')
 		let raw_task_block_list = lines_into_group(lines)
 		let thiz = this
 		let task_id = 1
 		let last_line_num = 0
 		raw_task_block_list.forEach(raw_task_block => {
-			let block = { tasks: [], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 , with_div: false}
+			let block = { tasks: [], task_id: 0, cmd_block: '', comment: '', start_line_num: 0 , with_div: false, interpreter: 'bash'}
+			let block_task_name = null
 			raw_task_block.forEach(line => {
 				if (line.type == 'task') {
 					block.tasks = line.tasks
@@ -363,6 +390,10 @@ class MkInfo {
 						return 1
 					}
 					block.start_line_num = line.num
+					block_task_name = line.tasks[0]
+					if (interpreter_map[block_task_name]) {
+						block.interpreter = interpreter_map[block_task_name]
+					}
 				} else if (line.type == 'code') {
 					block.cmd_block += '\n'.repeat(line.num - last_line_num) + line.str
 					if (line.str.trim().startsWith('##')) {
@@ -1431,29 +1462,7 @@ all:
 		return ret
 	}
 
-	run_task(cur_file, block, init_block, shell_args, new_workdir, mkfile_dir) {
-		function crc16(s) {
-			let n = 0
-			let poly = 0xA001
-			let ret = 0xA001
-			for (let i = 0; i < s.length; i++) {
-				let n = s.charCodeAt(i)
-				ret = (ret ^ n) & 0xffff
-				for (let j = 0; j < 8; j++) {
-					if ((ret & 0x0001) > 0) {
-						ret = (ret >> 1)
-						ret = ((ret ^ poly) & 0xFFFF)
-					} else {
-						ret = (ret >> 1)
-					}
-				}
-			}
-			let hi = ((ret >> 8) & 0xFF)
-			let lo = (ret & 0xFF)
-			ret = ((lo << 8) | hi)
-			return ret
-		}
-
+	run_bash_task(cur_file, block, init_block, shell_args, new_workdir, mkfile_dir) {
 		// 截获Ctrl+C 按键，可以中断程序
 		let trap_int_func = "trap 'onCtrlC ${LINENO}' INT\n" +
 			'onCtrlC() {\n' +
@@ -1573,36 +1582,45 @@ all:
 		let tag = crc16(shell_cmd)
 		let tmp_dir = this.tmp_dir
 		let shell_name = `${tmp_dir}/${block.tasks[0]}_${tag}.sh`
-		// logd(`${shell_name}`)
 
+		let interpreter_map = {
+			'bash': { ext: '.sh', cmd: '/bin/bash' },
+			'sh': { ext: '.sh', cmd: '/bin/sh' },
+			'python': { ext: '.py', cmd: 'python3' },
+			'python3': { ext: '.py', cmd: 'python3' },
+			'nu': { ext: '.nu', cmd: 'nu' },
+			'node': { ext: '.js', cmd: 'node' },
+		}
 
-		if (os.lstat(shell_name)[1] != 0) {
-			let fd = std.open(shell_name, 'wb+')
+		let interpreter_info = interpreter_map[block.interpreter] || interpreter_map['bash']
+		let script_name = `${tmp_dir}/${block.tasks[0]}_${tag}${interpreter_info.ext}`
+
+		if (os.lstat(script_name)[1] != 0) {
+			let fd = std.open(script_name, 'wb+')
 			if (!fd) {
-				loge(`create ${shell_name} error!`)
+				loge(`create ${script_name} error!`)
 				return 1
 			}
 			fd.puts(shell_cmd)
 			fd.close()
 		} else {
-			let fd = std.open(shell_name, 'rb')
+			let fd = std.open(script_name, 'rb')
 			if (fd) {
 				let data = fd.readAsString()
 				if (data == shell_cmd) {
 					fd.close()
 				} else {
-					// logi('crc16 error! mybe error.')
 					fd.close()
-					let fd2 = std.open(shell_name, 'wb')
+					let fd2 = std.open(script_name, 'wb')
 					if (!fd2) {
-						loge(`create ${shell_name} error!`)
+						loge(`create ${script_name} error!`)
 						return 1
 					}
 					fd2.puts(shell_cmd)
 					fd2.close()
 				}
 			} else {
-				loge(`open ${shell_name} error!`)
+				loge(`open ${script_name} error!`)
 				return 1
 			}
 		}
@@ -1611,17 +1629,131 @@ all:
 		std.setenv('_TASK_ROOT_WORKDIR', this.task_root_workdir)
 		std.setenv('_TASK_TMP_DIR', this.tmp_dir)
 		std.setenv('_TASK_IS_SUBTASK', 1)
-		// logd(bash_cmd)
-		let bash_cmd = ['/bin/bash', shell_name].concat(shell_args)
+
+		let exec_cmd = [interpreter_info.cmd, script_name].concat(shell_args)
 		this.run_task_flag = 1
 		let t0 = new Date().getTime()
-		let ret = os.exec(bash_cmd)
+		let ret = os.exec(exec_cmd)
 		if (!this.is_subtask) {
 			let t1 = new Date().getTime()
 			logi2('Bye!' + ` (${(t1 - t0) / 1000} s)`)
 		}
 		return ret
 	}
+
+	run_task(cur_file, block, init_block, shell_args, new_workdir, mkfile_dir) {
+		let interpreter_map = {
+			'bash': { ext: '.sh', cmd: '/bin/bash' },
+			'sh': { ext: '.sh', cmd: '/bin/sh' },
+			'python': { ext: '.py', cmd: 'python3' },
+			'python3': { ext: '.py', cmd: 'python3' },
+			'nu': { ext: '.nu', cmd: 'nu' },
+			'node': { ext: '.js', cmd: 'node' },
+		}
+
+		let real_path = os.realpath(this.expand_file(this.file))[0]
+		std.setenv('_TASK_CUR_DEFAULT_FILE', real_path)
+		std.setenv('_TASK_ROOT_WORKDIR', this.task_root_workdir)
+		std.setenv('_TASK_TMP_DIR', this.tmp_dir)
+		std.setenv('_TASK_IS_SUBTASK', 1)
+
+		if (block.interpreter === 'bash' || block.interpreter === 'sh') {
+			return this.run_bash_task(cur_file, block, init_block, shell_args, new_workdir, mkfile_dir)
+		}
+
+		block.cmd_block = block.cmd_block.trimEnd()
+		let tag = crc16(block.cmd_block)
+		let tmp_dir = this.tmp_dir
+
+		let info = interpreter_map[block.interpreter]
+		let ext = info ? info.ext : ''
+		let cmd = info ? info.cmd : block.interpreter
+
+		let cmd_path = cmd
+		let found = false
+		if (cmd_path.indexOf('/') === -1) {
+			let sys_path = std.getenv('PATH').split(':')
+			for (let i = 0; i < sys_path.length; i++) {
+				let p = sys_path[i] + '/' + cmd_path
+				if (os.lstat(p)[1] === 0) {
+					cmd_path = p
+					found = true
+					break
+				}
+			}
+		} else {
+			found = (os.lstat(cmd_path)[1] === 0)
+		}
+		if (!found) {
+			loge(`Interpreter [${cmd}] not found!`)
+			return 1
+		}
+
+		let script_name = `${tmp_dir}/${block.tasks[0]}_${tag}${ext}`
+
+		if (os.lstat(script_name)[1] != 0) {
+			let fd = std.open(script_name, 'wb+')
+			if (!fd) {
+				loge(`create ${script_name} error!`)
+				return 1
+			}
+			fd.puts(block.cmd_block)
+			fd.close()
+		} else {
+			let fd = std.open(script_name, 'rb')
+			if (fd) {
+				let data = fd.readAsString()
+				if (data != block.cmd_block) {
+					fd.close()
+					let fd2 = std.open(script_name, 'wb')
+					if (!fd2) {
+						loge(`create ${script_name} error!`)
+						return 1
+					}
+					fd2.puts(block.cmd_block)
+					fd2.close()
+				} else {
+					fd.close()
+				}
+			} else {
+				loge(`open ${script_name} error!`)
+				return 1
+			}
+		}
+
+		let exec_cmd = [cmd_path, script_name].concat(shell_args)
+
+		this.run_task_flag = 1
+		let t0 = new Date().getTime()
+		let ret = os.exec(exec_cmd)
+		if (!this.is_subtask) {
+			let t1 = new Date().getTime()
+			logi2('Bye!' + ` (${(t1 - t0) / 1000} s)`)
+		}
+		return ret
+	}
+}
+
+function crc16(s) {
+	let n = 0
+	let poly = 0xA001
+	let ret = 0xA001
+	for (let i = 0; i < s.length; i++) {
+		let n = s.charCodeAt(i)
+		ret = (ret ^ n) & 0xffff
+		for (let j = 0; j < 8; j++) {
+			if ((ret & 0x0001) > 0) {
+				ret = (ret >> 1)
+				ret = ((ret ^ poly) & 0xFFFF)
+			} else {
+				ret = (ret >> 1)
+			}
+		}
+	}
+	let hi = ((ret >> 8) & 0xFF)
+	let lo = (ret & 0xFF)
+	ret = ((lo << 8) | hi)
+	return ret
 }
 
 
