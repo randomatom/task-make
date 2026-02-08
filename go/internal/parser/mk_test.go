@@ -490,3 +490,241 @@ func TestPrintTask_EmptyBlockList(t *testing.T) {
 	mk.PrintTask("")
 	mk.PrintTask("s")
 }
+
+func TestPrintErr_MultipleErrors(t *testing.T) {
+	mk := &MkInfo{
+		Err:    2,
+		ErrMsg: "multiple errors occurred",
+	}
+	mk.PrintErr()
+}
+
+func TestPrintTask_WithShortOption(t *testing.T) {
+	mk := &MkInfo{
+		BlockList: []*Block{
+			{Tasks: []string{"build"}, CmdBlock: "echo build"},
+			{Tasks: []string{"test"}, CmdBlock: "echo test"},
+			{Tasks: []string{"deploy"}, CmdBlock: "echo deploy"},
+		},
+	}
+	mk.PrintTask("s")
+}
+
+func TestPrintTask_WithLongOption(t *testing.T) {
+	mk := &MkInfo{
+		BlockList: []*Block{
+			{Tasks: []string{"build"}, CmdBlock: "echo build"},
+			{Tasks: []string{"test"}, CmdBlock: "echo test"},
+		},
+	}
+	mk.PrintTask("")
+}
+
+func TestPrintTask_MixedTaskNames(t *testing.T) {
+	mk := &MkInfo{
+		BlockList: []*Block{
+			{Tasks: []string{"build", "b"}, CmdBlock: "echo build"},
+			{Tasks: []string{"clean", "c"}, CmdBlock: "echo clean"},
+		},
+	}
+	mk.PrintTask("s")
+}
+
+func TestParseFile_EmptyContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "empty.mk")
+	os.WriteFile(tmpFile, []byte(""), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	if mk.Err == 0 && len(mk.BlockList) == 0 {
+		// Empty file with no tasks is OK
+		return
+	}
+	// Empty file may have error if parser expects at least one task
+}
+
+func TestParseFile_OnlyComments(t *testing.T) {
+	content := `# This is a comment
+# Another comment
+## This has two hashes
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "comments.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	if mk.Err == 0 && len(mk.BlockList) == 0 {
+		// Comments-only file with no tasks is OK
+		return
+	}
+}
+
+func TestParseFile_WithDivider(t *testing.T) {
+	content := `
+build:
+	echo build
+
+#############################
+
+test:
+	echo test
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "divider.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	if mk.Err != 0 {
+		t.Errorf("NewMkInfo() err = %d, want 0", mk.Err)
+	}
+	if len(mk.BlockList) != 2 {
+		t.Errorf("BlockList count = %d, want 2", len(mk.BlockList))
+	}
+}
+
+func TestParseFile_InvalidIndentation(t *testing.T) {
+	content := `
+build:
+echo no indent
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "invalid.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	if mk.Err == 0 {
+		t.Errorf("NewMkInfo() err = 0, want error for invalid indentation")
+	}
+}
+
+func TestSearchTask_Found(t *testing.T) {
+	content := `
+build:
+	echo build
+
+test:
+	echo test
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "task.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	tasks := mk.SearchTask("", []string{"build"})
+	if len(tasks) == 0 {
+		t.Error("SearchTask('', ['build']) returned empty")
+	}
+}
+
+func TestSearchTask_NotFound(t *testing.T) {
+	content := `
+build:
+	echo build
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "task.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	tasks := mk.SearchTask("", []string{"nonexistent"})
+	if len(tasks) != 0 {
+		t.Error("SearchTask('', ['nonexistent']) should return empty")
+	}
+}
+
+func TestSearchTask_WithModuleAndKeys(t *testing.T) {
+	content := `
+build:
+	## builds the project
+	echo build
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "task.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	tasks := mk.SearchTask("mytool", []string{"build"})
+	if len(tasks) == 0 {
+		t.Error("SearchTask should find task with module name")
+	}
+}
+
+func TestFindTaskBlock_ByName(t *testing.T) {
+	content := `
+build:
+	echo build
+
+test:
+	echo test
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "task.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	block := mk.FindTaskBlock([]string{"test"})
+	if block == nil {
+		t.Error("FindTaskBlock(['test']) returned nil")
+	}
+}
+
+func TestFindTaskBlock_ByAlias(t *testing.T) {
+	content := `
+build / b:
+	echo build
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "task.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	block := mk.FindTaskBlock([]string{"b"})
+	if block == nil {
+		t.Error("FindTaskBlock(['b']) should find by alias")
+	}
+}
+
+func TestFindTaskBlock_NotFound(t *testing.T) {
+	content := `
+build:
+	echo build
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "task.mk")
+	os.WriteFile(tmpFile, []byte(content), 0o644)
+
+	mk := NewMkInfo(tmpFile)
+	block := mk.FindTaskBlock([]string{"nonexistent"})
+	if block != nil {
+		t.Error("FindTaskBlock(['nonexistent']) should return nil")
+	}
+}
+
+func TestFindTaskBlock_EmptyTasks(t *testing.T) {
+	mk := &MkInfo{
+		BlockList: []*Block{
+			{Tasks: []string{"build"}},
+		},
+	}
+	block := mk.FindTaskBlock([]string{})
+	if block != nil {
+		t.Error("FindTaskBlock([]) should return nil for empty task list")
+	}
+}
+
+func TestCalTaskStrLen_SingleTask(t *testing.T) {
+	arr := []string{"build"}
+	length := calTaskStrLen(arr)
+	if length != len("build") {
+		t.Errorf("calTaskStrLen(['build']) = %d, want %d", length, len("build"))
+	}
+}
+
+func TestCalTaskStrLen_MultipleTasks(t *testing.T) {
+	arr := []string{"build", "test", "deploy"}
+	length := calTaskStrLen(arr)
+	expected := len("build") + 3 + len("test") + 3 + len("deploy")
+	if length != expected {
+		t.Errorf("calTaskStrLen() = %d, want %d", length, expected)
+	}
+}
