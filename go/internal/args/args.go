@@ -20,7 +20,7 @@ var (
 	reTaskPart1     = regexp.MustCompile(`^[A-Za-z_][\w|-]*$|^\d+$|^$`)
 	reFilePart2     = regexp.MustCompile(`^@(\/|\w|\.|-)*$`)
 	reTaskPart2     = regexp.MustCompile(`^[A-Za-z_][\w-]*$|^\d+$|^$`)
-	reRepoDir       = regexp.MustCompile(`^@$|^@.+\/$`)
+	reRepoDir       = regexp.MustCompile(`^@$|^@.*\/$`)
 )
 
 type ArgsInfo struct {
