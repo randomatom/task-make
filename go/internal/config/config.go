@@ -11,12 +11,42 @@ const (
 	RepoDirName    = "repo"
 )
 
+func homeDir() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return ""
+	}
+	info, err := os.Stat(home)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	if home == "/" {
+		return ""
+	}
+
+	normalHome := []string{
+		"/home/",
+		"/Users/",
+		"/root/",
+	}
+	for _, prefix := range normalHome {
+		if strings.HasPrefix(home, prefix) {
+			return home
+		}
+	}
+
+	if info.Mode().Perm()&0o222 == 0 {
+		return ""
+	}
+	return home
+}
+
 func GetTaskMainDir() string {
 	dir := os.Getenv("_TASK_PROFILE_DIR")
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			home = os.Getenv("HOME")
+		home := homeDir()
+		if home == "" {
+			return ""
 		}
 		dir = filepath.Join(home, DefaultTaskDir)
 	}
@@ -74,6 +104,9 @@ func IsSubTask() bool {
 }
 
 func EnsureDirs(taskMainDir string) error {
+	if taskMainDir == "" {
+		return nil
+	}
 	repoDir := filepath.Join(taskMainDir, RepoDirName)
 	for _, dir := range []string{taskMainDir, repoDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

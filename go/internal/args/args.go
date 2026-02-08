@@ -267,6 +267,9 @@ func (ai *ArgsInfo) doHelp() int {
 	logger.Log("    -C               Compile the *.mk file into *.sh.")
 	logger.Log("    -h               Help.")
 	logger.Log("")
+	logger.Log("Note: Global module features (-s, -r, @module) require home directory access.")
+	logger.Log("      On Android, only local task.mk files are supported.")
+	logger.Log("")
 	logger.Log("Example template for task.mk script:")
 	logger.Log("")
 	logger.Log("__init__:")
@@ -387,6 +390,10 @@ func runEditor(editor, file string, lineNum ...int) {
 }
 
 func (ai *ArgsInfo) doSearch() int {
+	if ai.TaskMainDir == "" {
+		logger.Loge("Search disabled (no home directory)")
+		return 0
+	}
 	taskList := module.SearchTasksInModule(ai.TaskMainDir, ai.SearchKeyWords)
 	for _, t := range taskList {
 		if t[1] != "" {
@@ -399,6 +406,10 @@ func (ai *ArgsInfo) doSearch() int {
 }
 
 func (ai *ArgsInfo) doRun() int {
+	if ai.TaskMainDir == "" {
+		logger.Loge("Module repo disabled (no home directory)")
+		return 0
+	}
 	taskList := module.SearchTasksInModule(ai.TaskMainDir, ai.SearchKeyWords)
 	if len(taskList) == 0 {
 		logger.Loge("error: no task match!")
@@ -450,6 +461,10 @@ func (ai *ArgsInfo) doTabComplete() int {
 
 func (ai *ArgsInfo) doDefault() int {
 	if ai.File == "@" || strings.HasSuffix(ai.File, "/") {
+		if ai.TaskMainDir == "" {
+			logger.Loge("Module repo disabled (no home directory)")
+			return 0
+		}
 		module.PrintRepo(ai.TaskMainDir, ai.File, ai.ListOption)
 		return 0
 	}
