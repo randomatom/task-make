@@ -10,10 +10,10 @@ func TestGetChecksum(t *testing.T) {
 		input   string
 		wantLen int
 	}{
-		{"empty_string", "", 4},
-		{"simple_test", "test", 4},
-		{"hello_world", "hello world", 4},
-		{"numbers", "123456789", 4},
+		{"empty_string", "", 8},
+		{"simple_test", "test", 8},
+		{"hello_world", "hello world", 8},
+		{"numbers", "123456789", 8},
 	}
 
 	for _, tt := range tests {
