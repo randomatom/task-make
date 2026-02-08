@@ -1,9 +1,9 @@
 package executor
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"task/internal/logger"
 	"task/internal/parser"
@@ -11,14 +11,19 @@ import (
 )
 
 type Runner struct {
-	TaskMainDir string
-	TmpDir      string
+	TaskMainDir     string
+	TmpDir          string
+	ScriptArgs      []string
+	IsSubTask       bool
+	TaskRootWorkdir string
 }
 
 func NewRunner(taskMainDir, tmpDir string) *Runner {
 	return &Runner{
 		TaskMainDir: taskMainDir,
 		TmpDir:      tmpDir,
+		IsSubTask:   os.Getenv("_TASK_IS_SUBTASK") != "",
+		ScriptArgs:  os.Args,
 	}
 }
 
@@ -53,7 +58,7 @@ func (r *Runner) RunTask(curFile string, block *parser.Block, initBlock *parser.
 		cmd = cmdPath
 	}
 
-	scriptName := fmt.Sprintf("%s/%s_%s%s", r.TmpDir, block.Tasks[0], tag, ext)
+	scriptName := r.TmpDir + "/" + block.Tasks[0] + "_" + tag + ext
 	r.writeScript(scriptName, cmdBlock)
 
 	execCmd := append([]string{cmd, scriptName}, shellArgs...)
@@ -74,11 +79,136 @@ func (r *Runner) RunTask(curFile string, block *parser.Block, initBlock *parser.
 
 func (r *Runner) runBashTask(curFile string, block *parser.Block, initBlock *parser.Block, shellArgs []string, newWorkdir, mkfileDir string) int {
 	block.CmdBlock = strings.TrimSpace(block.CmdBlock)
-	tag := utils.GetChecksum(block.CmdBlock)
-	scriptName := fmt.Sprintf("%s/%s_%s.sh", r.TmpDir, block.Tasks[0], tag)
 
-	shellCmd := r.buildShellScript(curFile, block, initBlock, newWorkdir, mkfileDir)
+	esc := "\033[31m"
+	res := "\033[0m"
+
+	trapIntFunc := "trap 'onCtrlC ${LINENO}' INT\n" +
+		"onCtrlC() {\n" +
+		"\t_SIGINT_FLAG=1\n" +
+		"\t((line_num=${1}+@2))\n" +
+		"\t[ ${1} -lt @1 ] && exit 1\n" +
+		"\techo -e \"" + esc + "  SIGINT on [ " + curFile + " +${line_num} ]." + res + "\"\n" +
+		"\texit 1\n" +
+		"}\n"
+
+	trapErrFunc := "trap 'OnError ${LINENO}' ERR\n" +
+		"OnError() {\n" +
+		"\terrcode=$?\n" +
+		"\t_ERROR_FLAG=1\n" +
+		"\tif [ ${1} -ge @2 ] ; then\n" +
+		"\t    ((line_num=${1} - @5))\n" +
+		"\telif [ ${1} -ge @1 ] ; then\n" +
+		"\t    ((line_num=${1} - @4))\n" +
+		"\tfi\n" +
+		"\t[ ${1} -lt @1 ] && exit 1\n" +
+		"\tif [ $errcode -eq 127 ]; then\n" +
+		"\t    echo -e \"" + esc + "  Error on [ " + curFile + " +${line_num} ]. " + res + "\"\n" +
+		"\t    exit 1\n" +
+		"\telse\n" +
+		"\t    echo -e \"" + esc + "  Error on [ " + curFile + " +${line_num} ]. code ${errcode}. " + res + "\"\n" +
+		"\t    echo -e \"\033[33m  To allow the program to continue running after an error, try \\\"cmd1 | cmd2 || true\\\"\033[0m\"\n" +
+		"\t    exit \"${errcode}\"\n" +
+		"\tfi\n" +
+		"}\n"
+
+	trapExitFunc := "trap 'OnExit ${LINENO}' EXIT\n" +
+		"OnExit() {\n" +
+		"\terrcode=$?\n" +
+		"\t((line_num=${1}+@2))\n" +
+		"\t[ ${errcode} -eq 0 ] && exit 0\n" +
+		"\t[ -z ${_ERROR_FLAG+x} ] || exit ${errcode}\n" +
+		"\t[ -z ${_SIGINT_FLAG+x} ] || exit ${errcode}\n" +
+		"\t[ ${1} -lt @1 ] && exit ${errcode}\n" +
+		"\t[ ${1} -ge @3 ] && exit 0\n" +
+		"\techo -e \"" + esc + "  Exit ${errcode} on [ " + curFile + " +${line_num} ]. " + res + "\"\n" +
+		"\texit \"${errcode}\"\n" +
+		"}\n"
+
+	trapCmd := trapIntFunc + trapErrFunc + trapExitFunc
+
+	setCmd := "set -eu\n" + "set -o pipefail\n"
+
+	mFuncCmd := ""
+	if len(r.ScriptArgs) > 0 {
+		if r.ScriptArgs[0] == "m" {
+			pathEnv := os.Getenv("PATH")
+			if pathEnv != "" {
+				for _, dir := range strings.Split(pathEnv, ":") {
+					mPath := dir + "/m"
+					if _, err := os.Stat(mPath); err == nil {
+						mFuncCmd = "m() {\n\t\"" + mPath + "\" \"$@\"\n}\n"
+						break
+					}
+				}
+			}
+		} else if strings.HasSuffix(r.ScriptArgs[0], ".js") {
+			mFuncCmd = "m() {\n\tqjs \"" + r.ScriptArgs[0] + "\" \"$@\"\n}\n"
+		} else {
+			mFuncCmd = "m() {\n\t\"" + r.ScriptArgs[0] + "\" \"$@\"\n}\n"
+		}
+	}
+
+	initCmd := "MK_DIR=\"" + mkfileDir + "\"\n"
+
+	if r.TaskMainDir != "" {
+		initFile := r.TaskMainDir + "/__init__.sh"
+		if _, err := os.Stat(initFile); err == nil {
+			initCmd += ". " + initFile + "\n"
+		}
+	}
+
+	if newWorkdir != "" {
+		initCmd += "cd \"" + newWorkdir + "\"\n"
+	}
+
+	commentLine := "\n##########################\n\n"
+
+	initBlockCmdBlock := ""
+	initBlockStartLineNum := -1
+	if initBlock != nil {
+		initBlockCmdBlock = strings.TrimRight(initBlock.CmdBlock, " \t\n")
+		initBlockStartLineNum = initBlock.StartLineNum
+	}
+
+	shellCmd := trapCmd + setCmd + mFuncCmd + initCmd + commentLine
+
+	lines := strings.Split(shellCmd, "\n")
+	shTaskInitBlockStart := len(lines)
+
+	initBlockLines := strings.Split(initBlockCmdBlock, "\n")
+	initBlockLength := len(initBlockLines)
+
+	userBlockLines := strings.Split(block.CmdBlock, "\n")
+	userBlockLength := len(userBlockLines)
+
+	shTaskUserBlockStart := shTaskInitBlockStart + initBlockLength
+	shAllLineEnd := shTaskInitBlockStart + initBlockLength + userBlockLength
+
+	shInitBlockOffset := shTaskInitBlockStart - initBlockStartLineNum - 1
+	shUserBlockOffset := shTaskUserBlockStart - block.StartLineNum - 1
+
+	shellCmd = strings.ReplaceAll(shellCmd, "@1", strconv.Itoa(shTaskInitBlockStart))
+	shellCmd = strings.ReplaceAll(shellCmd, "@2", strconv.Itoa(shTaskUserBlockStart))
+	shellCmd = strings.ReplaceAll(shellCmd, "@3", strconv.Itoa(shAllLineEnd))
+	shellCmd = strings.ReplaceAll(shellCmd, "@4", strconv.Itoa(shInitBlockOffset))
+	shellCmd = strings.ReplaceAll(shellCmd, "@5", strconv.Itoa(shUserBlockOffset))
+
+	if initBlockCmdBlock != "" {
+		shellCmd += "\n" + initBlockCmdBlock
+	}
+	shellCmd += "\n" + block.CmdBlock
+
+	tag := utils.GetChecksum(shellCmd)
+	scriptName := r.TmpDir + "/" + block.Tasks[0] + "_" + tag + ".sh"
 	r.writeScript(scriptName, shellCmd)
+
+	os.Setenv("_TASK_CUR_DEFAULT_FILE", curFile)
+	if r.TaskRootWorkdir != "" {
+		os.Setenv("_TASK_ROOT_WORKDIR", r.TaskRootWorkdir)
+	}
+	os.Setenv("_TASK_TMP_DIR", r.TmpDir)
+	os.Setenv("_TASK_IS_SUBTASK", "1")
 
 	execCmd := append([]string{"/bin/bash", scriptName}, shellArgs...)
 	cmdExec := exec.Command(execCmd[0], execCmd[1:]...)
@@ -93,36 +223,6 @@ func (r *Runner) runBashTask(curFile string, block *parser.Block, initBlock *par
 		return 1
 	}
 	return 0
-}
-
-func (r *Runner) buildShellScript(curFile string, block *parser.Block, initBlock *parser.Block, newWorkdir, mkfileDir string) string {
-	var sb strings.Builder
-
-	sb.WriteString("set -eu\n")
-	sb.WriteString("set -o pipefail\n\n")
-
-	sb.WriteString(fmt.Sprintf("MK_DIR=\"%s\"\n", mkfileDir))
-
-	initFile := r.TaskMainDir + "/__init__.sh"
-	if _, err := os.Stat(initFile); err == nil {
-		sb.WriteString(fmt.Sprintf(". %s\n", initFile))
-	}
-
-	if newWorkdir != "" {
-		sb.WriteString(fmt.Sprintf("cd \"%s\"\n", newWorkdir))
-	}
-
-	sb.WriteString("\n")
-
-	if initBlock != nil {
-		sb.WriteString(strings.TrimSpace(initBlock.CmdBlock))
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString(strings.TrimSpace(block.CmdBlock))
-	sb.WriteString("\n")
-
-	return sb.String()
 }
 
 func (r *Runner) writeScript(path, content string) {
@@ -144,7 +244,7 @@ func (r *Runner) findInPath(cmd string) string {
 	}
 
 	for _, dir := range strings.Split(pathEnv, ":") {
-		cmdPath := strings.Join([]string{dir, cmd}, "/")
+		cmdPath := dir + "/" + cmd
 		if _, err := os.Stat(cmdPath); err == nil {
 			return cmdPath
 		}
