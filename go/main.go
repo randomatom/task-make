@@ -1,10 +1,10 @@
 package main
 
 import (
-	"os"
 	"task/internal/args"
 	"task/internal/config"
 	"task/internal/logger"
+	"os"
 )
 
 func main() {

@@ -37,7 +37,7 @@ for PLATFORM in "${PLATFORMS[@]}"; do
     fi
 
     echo "  Building: $OS/$ARCH..."
-    GOOS=$OS GOARCH=$ARCH go build -ldflags="$LDFLAGS" -o "../$PLATFORM_DIR/$OUTPUT_NAME" ./cmd/task
+    GOOS=$OS GOARCH=$ARCH go build -ldflags="$LDFLAGS" -o "$PLATFORM_DIR/$OUTPUT_NAME"
     echo "    -> $PLATFORM_DIR/$OUTPUT_NAME"
 done
 
@@ -58,9 +58,9 @@ for ARCH in "${ANDROID_PLATFORMS[@]}"; do
 
     echo "  Building: $ARCH..."
     if [ "$ANDROID_ARCH" = "arm" ]; then
-        CC="zig cc -target arm-linux-gnueabihf" CXX="zig c++ -target arm-linux-gnueabihf" GOOS=linux GOARCH=$ANDROID_ARCH go build -ldflags="$LDFLAGS" -o "../$PLATFORM_DIR/m" ./cmd/task
+        CC="zig cc -target arm-linux-gnueabihf" CXX="zig c++ -target arm-linux-gnueabihf" GOOS=linux GOARCH=$ANDROID_ARCH go build -ldflags="$LDFLAGS" -o "$PLATFORM_DIR/m"
     else
-        CGO_ENABLED=0 GOOS=$ANDROID_OS GOARCH=$ANDROID_ARCH go build -ldflags="$LDFLAGS" -o "../$PLATFORM_DIR/m" ./cmd/task
+        CGO_ENABLED=0 GOOS=$ANDROID_OS GOARCH=$ANDROID_ARCH go build -ldflags="$LDFLAGS" -o "$PLATFORM_DIR/m"
     fi
     echo "    -> $PLATFORM_DIR/m"
 done
