@@ -9,6 +9,8 @@ import (
 	"task/internal/parser"
 )
 
+var reRepoDir = regexp.MustCompile(`^@$|^@.+\/$`)
+
 func SearchTasksInModule(taskMainDir string, keyWords []string) [][2]string {
 	taskList := make([][2]string, 0)
 	repoDir := filepath.Join(taskMainDir, "repo")
@@ -38,7 +40,7 @@ func SearchTasksInModule(taskMainDir string, keyWords []string) [][2]string {
 }
 
 func PrintRepo(taskMainDir, subDir, listOption string) {
-	if matched, _ := regexp.MatchString(`^@$|^@.+\/$`, subDir); !matched {
+	if !reRepoDir.MatchString(subDir) {
 		logger.Logf("error: %s", subDir)
 		return
 	}

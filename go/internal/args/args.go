@@ -14,6 +14,15 @@ import (
 	"task/internal/parser"
 )
 
+var (
+	reMkSuffix      = regexp.MustCompile(`\.mk$`)
+	reFileTaskPart1 = regexp.MustCompile(`^@\w+(\/|\w|\.|-)*$|^(\/|\w|\.|-)+$|^$`)
+	reTaskPart1     = regexp.MustCompile(`^[A-Za-z_][\w|-]*$|^\d+$|^$`)
+	reFilePart2     = regexp.MustCompile(`^@(\/|\w|\.|-)*$`)
+	reTaskPart2     = regexp.MustCompile(`^[A-Za-z_][\w-]*$|^\d+$|^$`)
+	reRepoDir       = regexp.MustCompile(`^@$|^@.+\/$`)
+)
+
 type ArgsInfo struct {
 	Action          string
 	File            string
@@ -114,8 +123,7 @@ func (ai *ArgsInfo) parseArgs() int {
 			if i+1 < len(ai.ScriptArgs) {
 				ai.CompileBashFile = ai.ScriptArgs[i+1]
 			} else {
-				re := regexp.MustCompile(`\.mk$`)
-				ai.CompileBashFile = re.ReplaceAllString(ai.File, ".sh")
+				ai.CompileBashFile = reMkSuffix.ReplaceAllString(ai.File, ".sh")
 			}
 		} else {
 			return 1
@@ -166,8 +174,8 @@ func (ai *ArgsInfo) parseFileAndTask(arg string) int {
 	arr := strings.SplitN(arg, ":", 2)
 
 	if len(arr) == 2 && (arr[0] != "" || arr[1] != "") {
-		mFile, _ := regexp.MatchString(`^@\w+(\/|\w|\.|-)*$|^(\/|\w|\.|-)+$|^$`, arr[0])
-		mTask, _ := regexp.MatchString(`^[A-Za-z_][\w|-]*$|^\d+$|^$`, arr[1])
+		mFile := reFileTaskPart1.MatchString(arr[0])
+		mTask := reTaskPart1.MatchString(arr[1])
 		if mFile && mTask {
 			if arr[0] != "" {
 				ai.File = arr[0]
@@ -176,7 +184,7 @@ func (ai *ArgsInfo) parseFileAndTask(arg string) int {
 			return 0
 		}
 	} else if len(arr) == 1 {
-		mFile, _ := regexp.MatchString(`^@(\/|\w|\.|-)*$`, arr[0])
+		mFile := reFilePart2.MatchString(arr[0])
 		if mFile {
 			ai.File = arr[0]
 			ai.Task = ""
@@ -189,7 +197,7 @@ func (ai *ArgsInfo) parseFileAndTask(arg string) int {
 			return 0
 		}
 
-		mTask, _ := regexp.MatchString(`^[A-Za-z_][\w-]*$|^\d+$|^$`, arr[0])
+		mTask := reTaskPart2.MatchString(arr[0])
 		if mTask {
 			ai.File = ai.DefaultTaskFile
 			ai.Task = arr[0]
@@ -435,7 +443,7 @@ func (ai *ArgsInfo) doList() int {
 			return 1
 		}
 	} else if ai.File != "" {
-		if matched, _ := regexp.MatchString(`^@$|^@.+\/$`, ai.File); matched {
+		if reRepoDir.MatchString(ai.File) {
 			module.PrintRepo(ai.TaskMainDir, ai.File, ai.ListOption)
 		} else {
 			file := ai.expandFile(ai.File)

@@ -14,7 +14,7 @@ echo "Building m for all platforms..."
 VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-LDFLAGS="-s -w -X main.version=$VERSION -X main.commit=$COMMIT"
+LDFLAGS="-s -w -X main.version=$VERSION -X main.commit=$COMMIT -buildid= -extldflags=-s"
 
 PLATFORMS=(
     "darwin/amd64"

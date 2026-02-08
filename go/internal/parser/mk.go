@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"task/internal/logger"
 )
@@ -50,7 +49,7 @@ func (mk *MkInfo) ParseFile() {
 			} else {
 				continue
 			}
-		} else if strings.HasSuffix(trimmed, ":") || regexp.MustCompile(`:(?:\s+#!.+)$`).MatchString(trimmed) {
+		} else if strings.HasSuffix(trimmed, ":") || taskHashBang.MatchString(trimmed) {
 			if strings.HasPrefix(trimmed, "__init__:") {
 				lineInfo.Type = "task"
 				lineInfo.Tasks = []string{"__init__"}
@@ -257,7 +256,7 @@ func (mk *MkInfo) SearchTask(moduleName string, keys []string) [][2]string {
 
 func (mk *MkInfo) FindTaskBlock(tasks []string) *Block {
 	for _, t := range tasks {
-		if matched, _ := regexp.MatchString(`^\d+$`, t); matched {
+		if reNumber.MatchString(t) {
 			n := 0
 			fmt.Sscanf(t, "%d", &n)
 			if n == 0 {
