@@ -282,13 +282,13 @@ class MkInfo {
 			} else if (line.endsWith(':') || line.match(/:(?:\s+#!.+)$/)) {
 				let m0 = line.match(/^(__init__)\s*:/)
 				let task_regex = new RegExp(
-					'^' +                                   // 行首
-					'(\\*?)' +                              // * 默认任务标记
-					'(_?[A-Za-z][\\w|-]*)' +                // 主任务名
-					'(?:\\/\\s*([A-Za-z][\\w|-]*)\\s*)?' +  // / 别名
-					':' +                                   // 冒号分隔符
-					'(?:\\s+#!(.+))?' +                     // #!/path/to/interpreter
-					'$'                                     // 行尾
+					'^' +                                       // 行首
+					'(\\*?)' +                                  // * 默认任务标记
+					'(_?[A-Za-z][\\w|-]*)' +                    // 主任务名
+					'(?:\\s*\\/\\s*([A-Za-z][\\w|-]*)\\s*)?' +  // / 别名
+					':' +                                       // 冒号分隔符
+					'(?:\\s+#!(.+))?' +                         // #!/path/to/interpreter
+					'$'                                         // 行尾
 				)
 				let m1 = line.match(task_regex)
 				if (m0) {
