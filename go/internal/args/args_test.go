@@ -3,6 +3,7 @@ package args
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"task/internal/config"
 	"testing"
 )
@@ -731,5 +732,59 @@ func TestDoDefault_WithExistingFile(t *testing.T) {
 	ret := ai.doDefault()
 	if ret != 0 {
 		t.Errorf("doDefault() return = %d, want 0", ret)
+	}
+}
+
+func TestDoCreate_UsesTabForMakefileCommands(t *testing.T) {
+	setupMockEnv()
+	defer teardownMockEnv()
+
+	tmpDir := t.TempDir()
+	taskMainDir := filepath.Join(tmpDir, ".local", "task")
+	repoDir := filepath.Join(taskMainDir, "repo")
+	os.MkdirAll(repoDir, 0o755)
+
+	newFile := filepath.Join(tmpDir, "newtask.mk")
+
+	ai := &ArgsInfo{
+		File:        newFile,
+		TaskMainDir: taskMainDir,
+		TaskRepoDir: repoDir,
+	}
+
+	ret := ai.doCreate()
+	if ret != 0 {
+		t.Errorf("doCreate() return = %d, want 0", ret)
+	}
+
+	content, err := os.ReadFile(newFile)
+	if err != nil {
+		t.Fatalf("Failed to read created file: %v", err)
+	}
+
+	contentStr := string(content)
+	lines := strings.Split(contentStr, "\n")
+
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasSuffix(line, ":") {
+			continue
+		}
+		if len(line) > 0 && line[0] == '\t' {
+			continue
+		}
+		if len(line) > 0 && line[0] == ' ' {
+			t.Errorf("Line %d starts with space instead of tab: %q", i+1, line)
+		}
+	}
+
+	expectedContent := "__init__:\n\t# echo ${MK_DIR}\n\n*run1 / r:\n\tpwd\n"
+	if contentStr != expectedContent {
+		t.Errorf("Created file content does not match expected.\nGot: %q\nWant: %q", contentStr, expectedContent)
 	}
 }

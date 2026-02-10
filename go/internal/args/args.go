@@ -342,7 +342,7 @@ func (ai *ArgsInfo) doCreate() int {
 		}
 		defer f.Close()
 
-		f.WriteString("__init__:\n    # echo ${MK_DIR}\n\n*run1 / r:\n    pwd\n")
+		f.WriteString("__init__:\n\t# echo ${MK_DIR}\n\n*run1 / r:\n\tpwd\n")
 		logger.Logi2("create " + file)
 	}
 	return 0
